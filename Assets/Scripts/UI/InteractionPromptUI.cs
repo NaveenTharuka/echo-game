@@ -69,7 +69,10 @@ namespace Echo.UI
             {
                 shownFocus = focus;
                 shownVerb = verb;
-                if (label != null) label.text = $"[{interactor.InteractKeyHint}]  {verb}";
+                string key = focus is IHoldToInteract h && h.RequiresHold(interactor)
+                    ? "Hold " + interactor.InteractKeyHint
+                    : interactor.InteractKeyHint;
+                if (label != null) label.text = $"[{key}]  {verb}";
             }
             else if (!visible) shownFocus = null;
 

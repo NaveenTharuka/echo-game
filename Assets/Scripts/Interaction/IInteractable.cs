@@ -13,4 +13,11 @@ namespace Echo.Interaction
 
         void Interact(PlayerInteractor interactor);
     }
+
+    /// Optional: an interactable that acts only while the Interact key is held (dragging a barricade).
+    /// The prompt then reads "[Hold E]  Drag" instead of "[E]  Drag".
+    public interface IHoldToInteract
+    {
+        bool RequiresHold(PlayerInteractor interactor);
+    }
 }

@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Echo.Interaction
 {
-    /// A loose physics prop the player can pick up and throw, or, above the carrier's lift limit, cannot.
+    /// A loose physics prop the player can pick up and throw, or, above the carrier's lift limit, drag.
     /// What the player can do with it (lift / too heavy / later drag) is decided by PhysicsCarrier from the
     /// body's mass; this component owns what happens to the body itself: impact noise, the collision
     /// detection mode per phase, and the kill-plane respawn.
@@ -15,7 +15,7 @@ namespace Echo.Interaction
     ///   Settling - Discrete + Interpolate after the first hit, until the body sleeps (smooth bounces).
     [RequireComponent(typeof(Rigidbody))]
     [DisallowMultipleComponent]
-    public class Carryable : MonoBehaviour, IInteractable
+    public class Carryable : MonoBehaviour, IInteractable, IHoldToInteract
     {
         /// Bodies that fall below this height are put back where they last came to rest.
         public const float KillPlaneY = -50f;
@@ -33,6 +33,12 @@ namespace Echo.Interaction
         [Tooltip("Minimum seconds between impact noises, so a bouncing prop is one sound, not a burst.")]
         public float impactCooldown = 0.15f;
 
+        [Header("Drag release")]
+        [Tooltip("Linear + angular damping right after a drag ends, so a heavy prop stops instead of sliding on.")]
+        public float releaseDamping = 10f;
+        [Tooltip("s. How long the release damping lasts before the body's own damping returns.")]
+        public float releaseDampingTime = 0.5f;
+
         public Rigidbody Body { get; private set; }
         public Phase CurrentPhase { get; private set; }
         /// Where the body last came to rest (or was picked up). The kill plane respawns it here.
@@ -49,7 +55,7 @@ namespace Echo.Interaction
 
         Quaternion lastValidRotation;
         bool wasSleeping;
-        float silentUntil;
+        float silentUntil, dampedUntil, baseLinearDamping, baseAngularDamping;
         PlayerInteractor cachedInteractor;
         PhysicsCarrier cachedCarrier;
 
@@ -60,6 +66,8 @@ namespace Echo.Interaction
             // Transform, not Body: with autoSyncTransforms off the body may not have the spawn pose yet.
             LastValidPosition = transform.position;
             lastValidRotation = transform.rotation;
+            baseLinearDamping = Body.linearDamping;
+            baseAngularDamping = Body.angularDamping;
             SetPhase(Phase.Resting);
         }
 
@@ -82,6 +90,12 @@ namespace Echo.Interaction
             if (c != null) c.Use(this);
         }
 
+        public bool RequiresHold(PlayerInteractor interactor)
+        {
+            PhysicsCarrier c = CarrierOf(interactor);
+            return c != null && c.NeedsHold(this);
+        }
+
         // Prompt is read every frame while focused: look the carrier up only when the interactor changes.
         PhysicsCarrier CarrierOf(PlayerInteractor interactor)
         {
@@ -94,24 +108,45 @@ namespace Echo.Interaction
         }
 
         // ------------------------------------------------------------------------- carrier hooks
-        internal void OnGrabbed()
+        /// <param name="drag">Dragged along the floor: gravity stays on. Lifted: gravity off.</param>
+        internal void OnGrabbed(bool drag)
         {
-            RecordValidPose();   // it was resting somewhere valid before being lifted
+            RecordValidPose();   // it was resting somewhere valid before being moved
             Radius = ComputeRadius();
-            Body.useGravity = false;
+            RestoreDamping();
+            Body.useGravity = drag;
             SetPhase(Phase.Held);
         }
 
-        internal void OnReleased()
+        /// <param name="dragged">A dragged prop brakes hard (high damping) instead of flying on.</param>
+        internal void OnReleased(bool dragged)
         {
             Body.useGravity = true;
             wasSleeping = false;
-            SetPhase(Phase.Flight);
+            if (!dragged)
+            {
+                SetPhase(Phase.Flight);
+                return;
+            }
+            // It never left the floor and moves at walking speed: no continuous detection needed.
+            SetPhase(Phase.Settling);
+            Body.linearDamping = releaseDamping;
+            Body.angularDamping = releaseDamping;
+            dampedUntil = Time.time + releaseDampingTime;
+        }
+
+        void RestoreDamping()
+        {
+            if (dampedUntil <= 0f) return;
+            dampedUntil = 0f;
+            Body.linearDamping = baseLinearDamping;
+            Body.angularDamping = baseAngularDamping;
         }
 
         // ------------------------------------------------------------------------------- physics
         void FixedUpdate()
         {
+            if (dampedUntil > 0f && Time.time > dampedUntil) RestoreDamping();
             if (CurrentPhase == Phase.Held) return;
 
             if (Body.IsSleeping())

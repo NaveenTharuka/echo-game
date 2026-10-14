@@ -1,4 +1,5 @@
 using System;
+using StarterAssets;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -8,8 +9,7 @@ namespace Echo.Interaction
     /// PlayerInteractor (which supplies the aim and the Interact key).
     ///
     /// What happens to a prop is chosen by mass (ModeFor): up to liftMassLimit it is lifted; heavier props
-    /// show "Too heavy". Each mode has its own prompt and FixedUpdate step, so a new mode (drag) is one more
-    /// enum value + step, not a rewrite.
+    /// (barricades) are dragged while Interact is held. Each mode has its own prompt and FixedUpdate step.
     ///
     /// Hold: velocity-follow. Every physics step the body's velocity is set to carry it to the hold point
     /// (player velocity + offset * followGain, clamped), so it stays a real dynamic body: it collides with the
@@ -17,13 +17,18 @@ namespace Echo.Interaction
     /// body ignores the player's capsule (no pushing yourself, no standing on what you carry). If it is held
     /// back more than dropDistance from the hold point for snagTime without a break (snagged behind a wall),
     /// it is dropped; a fast turn moves the hold point that far only briefly, so it does not drop the prop.
+    ///
+    /// Drag: the same velocity-follow, but horizontal only (gravity on, keeps its height and Y velocity) and
+    /// turning about Y only; it keeps colliding with the player, so a barricade pushed into a wall stops the
+    /// player too. The player moves at dragSpeedFactor of normal speed. Releasing Interact lets go; the prop
+    /// then brakes with high damping (Carryable). While moving it makes an ObjectDrop scrape every 0.6 s.
     [DisallowMultipleComponent]
     [RequireComponent(typeof(PlayerInteractor))]
     public class PhysicsCarrier : MonoBehaviour
     {
         public const string ThrowActionName = "Throw";
 
-        public enum Mode { None, Lift, TooHeavy }
+        public enum Mode { None, Lift, Drag }
 
         [Header("Lift")]
         [Tooltip("kg. Heavier props can't be picked up.")]
@@ -43,6 +48,19 @@ namespace Echo.Interaction
         [Tooltip("s. Time a just-grabbed prop gets to reach the hold point before the drop distance applies.")]
         public float reachTime = 0.6f;
 
+        [Header("Drag (heavier than liftMassLimit)")]
+        [Tooltip("Player move/sprint speed multiplier while dragging.")]
+        public float dragSpeedFactor = 0.6f;
+        [Tooltip("1/s. Horizontal velocity towards the drag point = offset * gain (on top of the player's velocity).")]
+        public float dragFollowGain = 8f;
+        [Tooltip("m/s. Caps the drag velocity.")]
+        public float maxDragSpeed = 4f;
+        public float dragNoiseIntensity = 0.25f;
+        [Tooltip("s. One scrape noise per interval while the prop moves.")]
+        public float dragNoiseInterval = 0.6f;
+        [Tooltip("m/s. Slower than this counts as not moving (no scrape noise).")]
+        public float dragNoiseMinSpeed = 0.3f;
+
         [Header("Throw")]
         public float minThrowSpeed = 4f;
         public float maxThrowSpeed = 12f;
@@ -61,12 +79,15 @@ namespace Echo.Interaction
         public event Action<Carryable, float> Released;
 
         const string PickUpPrompt = "Pick up";
-        const string TooHeavyPrompt = "Too heavy";
+        const string DragPrompt = "Drag";
         string dropPrompt = "Drop";
 
         PlayerInteractor interactor;
         CharacterController body;
-        InputAction throwAction;
+        InputAction throwAction, interactAction;
+        FirstPersonController fpc;
+        float baseMoveSpeed, baseSprintSpeed;
+        Vector3 dragOffset;        // prop centre relative to the player, in the player's yaw space
         Quaternion grabRotation;   // prop rotation relative to the player's yaw
         float grabTime, chargeStart, tooFarSince;
         bool reached;
@@ -76,9 +97,12 @@ namespace Echo.Interaction
         {
             interactor = GetComponent<PlayerInteractor>();
             body = GetComponent<CharacterController>();
+            fpc = GetComponent<FirstPersonController>();
             if (interactor.inputActions != null)
             {
-                throwAction = interactor.inputActions.FindActionMap(PlayerInteractor.MapName, true).FindAction(ThrowActionName, true);
+                InputActionMap map = interactor.inputActions.FindActionMap(PlayerInteractor.MapName, true);
+                interactAction = map.FindAction(PlayerInteractor.InteractActionName, true);
+                throwAction = map.FindAction(ThrowActionName, true);
                 string hint = throwAction.GetBindingDisplayString(0);
                 dropPrompt = $"Drop    [{(string.IsNullOrEmpty(hint) ? "RMB" : hint)}]  Throw";
             }
@@ -119,28 +143,35 @@ namespace Echo.Interaction
         public Mode ModeFor(Carryable c)
         {
             if (c == null || c.Body == null || c.Body.isKinematic) return Mode.None;
-            return c.Body.mass <= liftMassLimit ? Mode.Lift : Mode.TooHeavy;
+            return c.Body.mass <= liftMassLimit ? Mode.Lift : Mode.Drag;
         }
+
+        /// True if the prompt should say "Hold" (drag runs only while Interact is held).
+        public bool NeedsHold(Carryable c) => ModeFor(c) == Mode.Drag;
+
+        /// Drag continues while this is true. Test hook: scripted checks can't hold a key.
+        internal bool SimulateDragHold { get; set; }
+        bool DragInputHeld => SimulateDragHold || (interactAction != null && interactAction.IsPressed());
 
         /// Prompt verb for a focused prop (cached strings: read every frame).
         public string PromptFor(Carryable c)
         {
-            if (c == Held) return dropPrompt;
-            return ModeFor(c) switch
+            Mode mode = ModeFor(c);
+            if (c == Held && mode == Mode.Lift) return dropPrompt;
+            return mode switch
             {
                 Mode.Lift => PickUpPrompt,
-                Mode.TooHeavy => TooHeavyPrompt,
+                Mode.Drag => DragPrompt,
                 _ => null,
             };
         }
 
-        /// Interact on a prop: drop it if held, otherwise pick it up if its mode allows.
+        /// Interact on a prop: drop it if held, otherwise lift or start dragging it (by mass).
         public void Use(Carryable c)
         {
             if (c == Held) { Drop(); return; }
             Mode mode = ModeFor(c);
-            if (mode == Mode.Lift) Grab(c, mode);
-            // TooHeavy: the prompt already says so; nothing happens.
+            if (mode != Mode.None) Grab(c, mode);
         }
 
         // ------------------------------------------------------------------------- grab/release
@@ -155,8 +186,16 @@ namespace Echo.Interaction
             grabRotation = Quaternion.Inverse(Yaw) * c.Body.rotation;
             grabTime = tooFarSince = Time.time;
             reached = false;
-            c.OnGrabbed();
-            IgnorePlayer(c, true);
+            bool drag = mode == Mode.Drag;
+            c.OnGrabbed(drag);
+            if (drag)
+            {
+                Vector3 offset = c.Body.worldCenterOfMass - transform.position;
+                offset.y = 0f;
+                dragOffset = Quaternion.Inverse(Yaw) * offset;
+                SlowPlayer(true);
+            }
+            else IgnorePlayer(c, true);     // a lifted prop must not push the player; a dragged one stays solid
             interactor.FocusOverride = c;   // hands full: E means "drop", the prompt stays on the held prop
             PickedUp?.Invoke(c);
         }
@@ -176,12 +215,19 @@ namespace Echo.Interaction
             IsCharging = false;
             Carryable c = Held;
             if (ReferenceEquals(c, null)) return;
+            bool dragged = HeldMode == Mode.Drag;
             Held = null;
             HeldMode = Mode.None;
             interactor.FocusOverride = null;
+            if (dragged) SlowPlayer(false);
             if (c == null) return;   // destroyed while held
 
-            c.OnReleased();
+            c.OnReleased(dragged);
+            if (dragged)
+            {
+                Released?.Invoke(c, 0f);
+                return;   // never ignored the player
+            }
             if (launchSpeed > 0f)
             {
                 c.Body.linearVelocity = PlayerVelocity;
@@ -203,22 +249,25 @@ namespace Echo.Interaction
             switch (HeldMode)
             {
                 case Mode.Lift: LiftStep(); break;
+                case Mode.Drag: DragStep(); break;
             }
+        }
+
+        /// Snagged = too far for snagTime without a break. A fast mouse flick is too far for a few steps only.
+        bool Snagged(float distance)
+        {
+            if (!reached) reached = distance < dropDistance * 0.5f;
+            if ((reached || Time.time - grabTime > reachTime) && distance > dropDistance)
+                return Time.time - tooFarSince > snagTime;
+            tooFarSince = Time.time;
+            return false;
         }
 
         void LiftStep()
         {
             Rigidbody rb = Held.Body;
             Vector3 offset = HoldPoint - rb.worldCenterOfMass;
-            float distance = offset.magnitude;
-
-            if (!reached) reached = distance < dropDistance * 0.5f;
-            // Snagged = too far for snagTime without a break. A fast mouse flick is too far for a few steps only.
-            if ((reached || Time.time - grabTime > reachTime) && distance > dropDistance)
-            {
-                if (Time.time - tooFarSince > snagTime) { Drop(); return; }
-            }
-            else tooFarSince = Time.time;
+            if (Snagged(offset.magnitude)) { Drop(); return; }
 
             rb.linearVelocity = Vector3.ClampMagnitude(PlayerVelocity + offset * followGain, maxFollowSpeed);
 
@@ -229,6 +278,51 @@ namespace Echo.Interaction
             rb.angularVelocity = Mathf.Abs(angle) > 0.1f && !float.IsInfinity(axis.x)
                 ? axis * (angle * Mathf.Deg2Rad * rotationGain)
                 : Vector3.zero;
+        }
+
+        void DragStep()
+        {
+            if (!DragInputHeld) { Drop(); return; }
+
+            Rigidbody rb = Held.Body;
+            Vector3 offset = DragPoint - rb.worldCenterOfMass;
+            offset.y = 0f;   // floor plane only: gravity and the floor own the height
+            if (Snagged(offset.magnitude)) { Drop(); return; }
+
+            Vector3 v = PlayerVelocity;
+            v.y = 0f;
+            v = Vector3.ClampMagnitude(v + offset * dragFollowGain, maxDragSpeed);
+            v.y = rb.linearVelocity.y;
+            rb.linearVelocity = v;
+
+            // Yaw only (X/Z rotation is frozen on barricades): keep the grab orientation relative to the player.
+            float yawError = Mathf.DeltaAngle(rb.rotation.eulerAngles.y, (Yaw * grabRotation).eulerAngles.y);
+            rb.angularVelocity = new Vector3(0f, yawError * Mathf.Deg2Rad * rotationGain * 0.5f, 0f);
+
+            // Player source: the scrape is right next to the player (unlike a thrown decoy).
+            if (new Vector2(v.x, v.z).sqrMagnitude > dragNoiseMinSpeed * dragNoiseMinSpeed)
+                InteractionNoise.Emit(NoiseType.ObjectDrop, rb.worldCenterOfMass, dragNoiseIntensity, NoiseSource.Player,
+                                      Held.gameObject, dragNoiseInterval);
+        }
+
+        /// World point a dragged prop's centre is pulled to (horizontal; same place relative to the player as at grab).
+        public Vector3 DragPoint => transform.position + Yaw * dragOffset;
+
+        void SlowPlayer(bool slow)
+        {
+            if (fpc == null) return;
+            if (slow)
+            {
+                baseMoveSpeed = fpc.MoveSpeed;
+                baseSprintSpeed = fpc.SprintSpeed;
+                fpc.MoveSpeed = baseMoveSpeed * dragSpeedFactor;
+                fpc.SprintSpeed = baseSprintSpeed * dragSpeedFactor;
+            }
+            else
+            {
+                fpc.MoveSpeed = baseMoveSpeed;
+                fpc.SprintSpeed = baseSprintSpeed;
+            }
         }
 
         /// World point the held prop's centre of mass is pulled to.
