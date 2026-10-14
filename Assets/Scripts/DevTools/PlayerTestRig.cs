@@ -52,6 +52,25 @@ namespace Echo.DevTools
             if (fpc != null) fpc.enabled = true;
         }
 
+        /// Drives the real FirstPersonController through its input fields (as the keyboard would), so its own speed,
+        /// acceleration, gravity and jump code run. Drive(Vector2.zero, false) and Freeze() stop it again.
+        public void Drive(Vector2 move, bool sprint, bool jump = false)
+        {
+            if (inputs == null || fpc == null) return;
+            inputs.look = Vector2.zero;
+            inputs.move = move;
+            inputs.sprint = sprint;
+            inputs.jump = jump;
+            fpc.enabled = true;
+        }
+
+        /// Back to scripted control: controller off, inputs zeroed.
+        public void Freeze()
+        {
+            ZeroInputs();
+            if (fpc != null) fpc.enabled = false;
+        }
+
         void ZeroInputs()
         {
             if (inputs == null) return;

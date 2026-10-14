@@ -19,7 +19,7 @@ namespace Echo.DevTools
     /// placed and the camera aimed at that check's target. Negative checks include a control (the same
     /// target IS focused once the blocking condition is removed), so they cannot pass vacuously.
     /// Everything is restored afterwards, so the sandbox stays playable and the test can be re-run.
-    public class InteractionSelfTest : MonoBehaviour
+    public partial class InteractionSelfTest : MonoBehaviour
     {
         [Tooltip("Run automatically when entering Play Mode. Off so the sandbox is playable by hand.")]
         public bool runOnPlay;
@@ -80,12 +80,21 @@ namespace Echo.DevTools
             yield return CoreChecks();
             yield return DoorChecks();
             yield return ThrowableChecks();
-            RestorePlayer();
+            yield return PlayerChecks();
 
             InteractionNoise.Emitted -= OnNoise;
+            // Last: death reloads the scene (this object with it), so its final check and the summary are logged
+            // after the reload. Without a PlayerDeath the run ends here as before.
+            if (StartDeathCheck()) yield break;
+            RestorePlayer();
             running = false;
+            LogSummary(passed, failed);
+        }
+
+        static void LogSummary(int passed, int failed)
+        {
             string summary = $"[SelfTest] {passed} passed, {failed} failed. Sound core bound: {InteractionNoise.SoundCoreBound}";
-            if (failed == 0) Debug.Log(summary, this); else Debug.LogError(summary, this);
+            if (failed == 0) Debug.Log(summary); else Debug.LogError(summary);
         }
 
         // ======================================================================== interaction core
