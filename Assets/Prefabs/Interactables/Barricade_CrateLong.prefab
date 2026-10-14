@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 5385122107533877351}
   - component: {fileID: 4229453593217502355}
   - component: {fileID: 9076343550071458399}
+  - component: {fileID: 2399240646705330361}
   m_Layer: 0
   m_Name: Mesh
   m_TagString: Untagged
@@ -112,6 +113,22 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.6403392, y: 0.59972155, z: 1.2744108}
   m_Center: {x: 0.32004324, y: 0.29986495, z: 0.63720685}
+--- !u!208 &2399240646705330361
+NavMeshObstacle:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 460998865820305209}
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Shape: 1
+  m_Extents: {x: 0.3201696, y: 0.29986078, z: 0.6372054}
+  m_MoveThreshold: 0.1
+  m_Carve: 1
+  m_CarveOnlyStationary: 1
+  m_Center: {x: 0.32004324, y: 0.29986495, z: 0.63720685}
+  m_TimeToStationary: 0.5
 --- !u!1 &2901921906295863499
 GameObject:
   m_ObjectHideFlags: 0
@@ -123,6 +140,7 @@ GameObject:
   - component: {fileID: 1454888452986591517}
   - component: {fileID: 8161064020127954111}
   - component: {fileID: 2790689201270160753}
+  - component: {fileID: 6443453930451312060}
   m_Layer: 0
   m_Name: Barricade_CrateLong
   m_TagString: Untagged
@@ -171,7 +189,7 @@ Rigidbody:
   m_UseGravity: 1
   m_IsKinematic: 0
   m_Interpolate: 0
-  m_Constraints: 0
+  m_Constraints: 80
   m_CollisionDetection: 0
 --- !u!114 &2790689201270160753
 MonoBehaviour:
@@ -191,3 +209,25 @@ MonoBehaviour:
   minIntensity: 0.15
   maxIntensity: 0.7
   impactCooldown: 0.15
+  releaseDamping: 10
+  releaseDampingTime: 0.5
+--- !u!114 &6443453930451312060
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2901921906295863499}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1e3fdca004f2d45fe8abbed571a8abd5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.AI.Navigation::Unity.AI.Navigation.NavMeshModifier
+  m_SerializedVersion: 0
+  m_OverrideArea: 0
+  m_Area: 0
+  m_OverrideGenerateLinks: 0
+  m_GenerateLinks: 0
+  m_IgnoreFromBuild: 1
+  m_ApplyToChildren: 1
+  m_AffectedAgents: ffffffff
