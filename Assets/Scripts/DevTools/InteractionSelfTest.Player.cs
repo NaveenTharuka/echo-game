@@ -4,7 +4,6 @@ using Echo.Interaction;
 using Echo.Navigation;
 using Echo.Player;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
 namespace Echo.DevTools
@@ -191,9 +190,11 @@ namespace Echo.DevTools
 #endif
 
             bool killed = death.Kill(gameObject);
-            var playerInput = interactor.GetComponent<PlayerInput>();
+            // (PlayerInput is already off during the run - the rig disables live input - so check the player's own parts.)
             bool dropped = carrier.Held == null && basin.Body.useGravity;
-            bool controlOff = !interactor.enabled && !carrier.enabled && (playerInput == null || !playerInput.enabled);
+            var weaponAfter = interactor.GetComponent<HitscanWeapon>();
+            var noiseAfter = interactor.GetComponent<PlayerNoise>();
+            bool controlOff = !interactor.enabled && !carrier.enabled && !weaponAfter.enabled && !noiseAfter.enabled;
             Check("Kill drops the held object and disables control", holding && killed && death.IsDead && dropped && controlOff,
                   $"killed={killed} dropped={dropped} controlOff={controlOff}");
 

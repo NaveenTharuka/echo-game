@@ -2,11 +2,14 @@ using System.Collections;
 using Echo.Interaction;
 using StarterAssets;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Echo.DevTools
 {
-    /// Drives the Starter Assets player for scripted Play Mode checks: disables move/look input,
-    /// places and aims the player, and walks it with its real CharacterController (real collisions).
+    /// Drives the Starter Assets player for scripted Play Mode checks: disables ALL live player input (move/look
+    /// via PlayerInput, and Interact/Throw/Fire), places and aims the player, and walks it with its real
+    /// CharacterController (real collisions). Live input off makes runs deterministic: a click into the Game view
+    /// to focus Unity would otherwise fire a real shot mid-test. Checks call TryInteract/TryFire directly.
     /// Restore() puts everything back. Used by InteractionSelfTest and WarehouseDoorWalkthrough.
     public class PlayerTestRig
     {
@@ -19,6 +22,8 @@ namespace Echo.DevTools
         readonly StarterAssetsInputs inputs;
         readonly CharacterController cc;
         readonly Quaternion startYaw, startPitch;
+        readonly PlayerInput playerInput;
+        readonly InputActionMap interactionMap;
 
         public PlayerTestRig(PlayerInteractor interactor)
         {
@@ -31,6 +36,10 @@ namespace Echo.DevTools
                 ? fpc.CinemachineCameraTarget.transform
                 : interactor.viewPoint.parent;
 
+            playerInput = Player.GetComponent<PlayerInput>();
+            interactionMap = interactor.inputActions != null ? interactor.inputActions.FindActionMap(PlayerInteractor.MapName) : null;
+            if (playerInput != null) playerInput.enabled = false;
+            interactionMap?.Disable();
             if (fpc != null) fpc.enabled = false;
             ZeroInputs();
 
@@ -50,6 +59,8 @@ namespace Echo.DevTools
             Physics.SyncTransforms();
             ZeroInputs();
             if (fpc != null) fpc.enabled = true;
+            if (playerInput != null) playerInput.enabled = true;
+            interactionMap?.Enable();
         }
 
         /// Drives the real FirstPersonController through its input fields (as the keyboard would), so its own speed,
