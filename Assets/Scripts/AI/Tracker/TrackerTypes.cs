@@ -68,6 +68,16 @@ namespace Echo.AI.Tracker
         int Nearest(Vector3 p);
     }
 
+    /// How the Tracker's body moves. NavMeshTrackerMover now; an AgentMotor adapter when M4's code lands.
+    public interface ITrackerMover
+    {
+        /// False if the target cannot be reached at all (Failed is also raised).
+        bool MoveTo(Vector3 target, TrackerGait gait);
+        void Stop();
+        /// One-shot events since the last call.
+        void ConsumeEvents(out bool arrived, out bool failed);
+    }
+
     public static class TrackerCosts
     {
         /// Edge cost in metres. A closed door costs the distance the traveller could have covered while
