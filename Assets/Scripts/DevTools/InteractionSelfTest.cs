@@ -29,6 +29,11 @@ namespace Echo.DevTools
         public Door lockedDoor;
         public SwitchInteractable unlockSwitch;
 
+        [Header("Throwables (wired by ECHO > Sandbox > Build Throwable Test Area)")]
+        public PhysicsCarrier carrier;
+        public Carryable brick, basin, heavyCrate;
+        public Collider thinWall;
+
         int passed, failed;
         bool running;
         NoiseRecord lastNoise;
@@ -71,6 +76,7 @@ namespace Echo.DevTools
             FreezePlayer();
             yield return CoreChecks();
             yield return DoorChecks();
+            yield return ThrowableChecks();
             RestorePlayer();
 
             InteractionNoise.Emitted -= OnNoise;
@@ -234,6 +240,149 @@ namespace Echo.DevTools
             yield return WaitFor(() => lockedDoor.CurrentState == Door.State.Closed, settle + lockedDoor.retryInterval);
             lockedDoor.Lock();
             unlockSwitch.ResetSwitch();
+        }
+
+        // ============================================================================== throwables
+        IEnumerator ThrowableChecks()
+        {
+            if (carrier == null || brick == null || basin == null || heavyCrate == null || thinWall == null)
+            {
+                Check("throwable test area present", false, "run ECHO > Sandbox > Build Throwable Test Area");
+                yield break;
+            }
+            var cc = interactor.GetComponent<CharacterController>();
+            Carryable[] props = { brick, basin, heavyCrate };
+            var start = new Pose[props.Length];
+            for (int i = 0; i < props.Length; i++) start[i] = new Pose(props[i].Body.position, props[i].Body.rotation);
+
+            // Wall plane, normal pointing at the props' side.
+            Vector3 wallCentre = thinWall.bounds.center, wallN = thinWall.transform.forward;
+            if (Vector3.Dot(brick.Body.position - wallCentre, wallN) < 0f) wallN = -wallN;
+            float WallSide(Vector3 p) => Vector3.Dot(p - wallCentre, wallN);
+
+            // 1. pick up
+            Vector3 stand = StandBy(brick, wallN);
+            Aim(stand, brick.Body.worldCenterOfMass);
+            bool focused = ReferenceEquals(interactor.Focus, brick);
+            string verb = brick.GetPrompt(interactor);
+            bool used = interactor.TryInteract();
+            bool ignoresPlayer = Physics.GetIgnoreCollision(brick.Colliders[0], cc);
+            Check("picks up the 2 kg brick (prompt Pick up, gravity off, interpolated, ignores the player's capsule)",
+                  focused && verb == "Pick up" && used && carrier.Held == brick && !brick.Body.useGravity &&
+                  brick.CurrentPhase == Carryable.Phase.Held && brick.Body.interpolation == RigidbodyInterpolation.Interpolate && ignoresPlayer,
+                  $"focused={focused} verb={verb} held={(carrier.Held != null ? carrier.Held.name : "none")} gravity={brick.Body.useGravity} phase={brick.CurrentPhase} interp={brick.Body.interpolation} ignore={ignoresPlayer}");
+
+            // 2. hold follows the camera, also after a one-frame 90 degree turn (plus looking up from the floor). That
+            //    flick puts the hold point beyond the 1.5 m drop distance for a moment: the snag grace must keep it held.
+            yield return new WaitForSeconds(0.6f);
+            float before = Vector3.Distance(carrier.HoldPoint, brick.Body.worldCenterOfMass);
+            Vector3 heldAt = brick.Body.position;
+            Vector3 side = Quaternion.Euler(0f, 90f, 0f) * -wallN;
+            Aim(stand, stand + side * 3f + Vector3.up * (eyeOffset.y + 1.5f));
+            float jump = Vector3.Distance(carrier.HoldPoint, brick.Body.worldCenterOfMass);
+            yield return new WaitForSeconds(0.6f);
+            float after = Vector3.Distance(carrier.HoldPoint, brick.Body.worldCenterOfMass);
+            float moved = Vector3.Distance(heldAt, brick.Body.position);
+            verb = brick.GetPrompt(interactor);
+            Check("held brick follows the camera (< 0.15 m from the hold point; a 90 deg flick past the 1.5 m drop distance doesn't drop it; prompt Drop)",
+                  carrier.Held == brick && before < 0.15f && jump > carrier.dropDistance && after < 0.15f && moved > 0.5f &&
+                  ReferenceEquals(interactor.Focus, brick) && verb.StartsWith("Drop"),
+                  $"offsetBefore={before:F3} flickOffset={jump:F2} offsetAfter={after:F3} moved={moved:F2} held={carrier.Held == brick} verb={verb}");
+
+            // 3. full-charge throw at the 5 cm wall
+            Vector3 throwFrom = wallCentre + wallN * 3.5f;
+            throwFrom.y = origin.y;
+            Aim(throwFrom, new Vector3(wallCentre.x, throwFrom.y + eyeOffset.y, wallCentre.z));
+            // The rig teleports the player; carry the prop along as walking there would have.
+            brick.Body.position = carrier.HoldPoint;
+            yield return new WaitForSeconds(0.6f);
+            NoiseRecord firstHit = default;
+            bool hit = false;
+            void OnBrickNoise(NoiseRecord r) { if (!hit && r.Emitter == brick.gameObject) { hit = true; firstHit = r; } }
+            InteractionNoise.Emitted += OnBrickNoise;
+            carrier.Throw(1f);
+            yield return new WaitForFixedUpdate();
+            yield return new WaitForFixedUpdate();
+            float launch = brick.Body.linearVelocity.magnitude;
+            Carryable.Phase flightPhase = brick.CurrentPhase;
+            RigidbodyInterpolation flightInterp = brick.Body.interpolation;
+            CollisionDetectionMode flightMode = brick.Body.collisionDetectionMode;
+            yield return WaitFor(() => hit, 1.5f);
+            CollisionDetectionMode afterHitMode = brick.Body.collisionDetectionMode;
+            yield return new WaitForSeconds(1f);
+            InteractionNoise.Emitted -= OnBrickNoise;
+            Check("full-charge throw: ~12 m/s, ContinuousDynamic + Interpolate in flight, back to Discrete after the first hit",
+                  carrier.Held == null && launch > 11f && launch < 13f && flightPhase == Carryable.Phase.Flight &&
+                  flightMode == CollisionDetectionMode.ContinuousDynamic && flightInterp == RigidbodyInterpolation.Interpolate &&
+                  hit && afterHitMode == CollisionDetectionMode.Discrete,
+                  $"launch={launch:F2} phase={flightPhase} mode={flightMode} interp={flightInterp} hit={hit} afterHit={afterHitMode}");
+            Check("impact noise through InteractionNoise (Environment, 0.15-0.7, at the wall)",
+                  hit && firstHit.Type == brick.impactNoise && firstHit.Source == NoiseSource.Environment &&
+                  firstHit.Intensity >= brick.minIntensity && firstHit.Intensity <= brick.maxIntensity && Mathf.Abs(WallSide(firstHit.Position)) < 0.2f,
+                  $"hit={hit} type={firstHit.Type} source={firstHit.Source} intensity={firstHit.Intensity:F2} distFromWall={WallSide(firstHit.Position):F2}");
+            Check("no tunnelling: the brick stays on the thrower's side of the 5 cm wall",
+                  hit && WallSide(brick.Body.position) > 0f, $"signedDistanceFromWall={WallSide(brick.Body.position):F2}");
+
+            // 4. kill plane
+            yield return WaitFor(() => brick.Body.IsSleeping(), 2f);
+            Vector3 valid = brick.LastValidPosition;
+            bool respawned = false;
+            void OnRespawn(Carryable _) => respawned = true;
+            brick.Respawned += OnRespawn;
+            brick.Body.position = new Vector3(valid.x, Carryable.KillPlaneY - 5f, valid.z);
+            brick.Body.linearVelocity = Vector3.down * 5f;
+            brick.Body.WakeUp();
+            yield return new WaitForFixedUpdate();
+            yield return new WaitForFixedUpdate();
+            brick.Respawned -= OnRespawn;
+            Check("kill plane (y < -50) respawns the brick at its last rest position (at rest: Discrete, no interpolation)",
+                  respawned && Vector3.Distance(brick.Body.position, valid) < 0.05f && brick.Body.position.y > Carryable.KillPlaneY &&
+                  brick.Body.interpolation == RigidbodyInterpolation.None && brick.Body.collisionDetectionMode == CollisionDetectionMode.Discrete,
+                  $"respawned={respawned} pos={brick.Body.position} lastValid={valid} interp={brick.Body.interpolation} mode={brick.Body.collisionDetectionMode}");
+
+            // 5. too heavy (control: the same crate is liftable when the limit is raised)
+            Aim(StandBy(heavyCrate, wallN), heavyCrate.Body.worldCenterOfMass);
+            focused = ReferenceEquals(interactor.Focus, heavyCrate);
+            verb = heavyCrate.GetPrompt(interactor);
+            interactor.TryInteract();
+            float limit = carrier.liftMassLimit;
+            carrier.liftMassLimit = heavyCrate.Body.mass + 1f;
+            bool control = heavyCrate.GetPrompt(interactor) == "Pick up";
+            carrier.liftMassLimit = limit;
+            Check("40 kg crate shows Too heavy and is not lifted",
+                  focused && verb == "Too heavy" && carrier.Held == null && heavyCrate.Body.mass >= 40f && heavyCrate.Body.useGravity && control,
+                  $"focused={focused} verb={verb} mass={heavyCrate.Body.mass} held={(carrier.Held != null ? carrier.Held.name : "none")} control={control}");
+
+            // 6. metal basin: lifts, E drops it, the player collision comes back once clear
+            Aim(StandBy(basin, wallN), basin.Body.worldCenterOfMass);
+            interactor.TryInteract();
+            bool lifted = carrier.Held == basin;
+            yield return new WaitForSeconds(0.4f);
+            bool dropped = interactor.TryInteract() && carrier.Held == null && basin.Body.useGravity;
+            yield return new WaitForSeconds(1.2f);
+            bool restored = !Physics.GetIgnoreCollision(basin.Colliders[0], cc);
+            Check("3 kg metal basin lifts, E drops it, player collision restored once clear",
+                  lifted && dropped && restored, $"lifted={lifted} dropped={dropped} collisionRestored={restored}");
+
+            // restore the props
+            carrier.Drop();
+            for (int i = 0; i < props.Length; i++)
+            {
+                Rigidbody rb = props[i].Body;
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+                rb.position = start[i].position;
+                rb.rotation = start[i].rotation;
+                props[i].transform.SetPositionAndRotation(start[i].position, start[i].rotation);
+            }
+        }
+
+        /// Feet 1.4 m from the prop, on the side away from the wall.
+        Vector3 StandBy(Carryable c, Vector3 awayFromWall)
+        {
+            Vector3 p = c.Body.position + awayFromWall * 1.4f;
+            p.y = origin.y;
+            return p;
         }
 
         Vector3 Approach(Door d, float distance)

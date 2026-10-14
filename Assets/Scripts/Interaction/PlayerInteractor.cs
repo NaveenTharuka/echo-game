@@ -31,6 +31,9 @@ namespace Echo.Interaction
         /// Key label of the Interact binding, e.g. "E".
         public string InteractKeyHint { get; private set; } = "E";
 
+        /// While set (e.g. a prop being carried), this is the focus and no cast is made.
+        public IInteractable FocusOverride { get; set; }
+
         public event Action<IInteractable> FocusChanged;
         public event Action<IInteractable> Interacted;
 
@@ -80,6 +83,13 @@ namespace Echo.Interaction
         public void RefreshFocus()
         {
             if (viewPoint == null) { ClearFocus(); return; }
+            if (IsAlive(FocusOverride))
+            {
+                lastCollider = null;
+                lastCandidate = null;
+                SetFocus(FocusOverride.CanInteract(this) ? FocusOverride : null);
+                return;
+            }
 
             // Cast against interactables AND occluders, and accept only an interactable hit,
             // so you cannot use a door through a wall. Triggers (zones) are ignored.

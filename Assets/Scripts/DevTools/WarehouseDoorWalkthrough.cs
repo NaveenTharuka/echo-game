@@ -233,6 +233,55 @@ namespace Echo.DevTools
             Check("player stops at the face of Wall Door 02 (not inside the wall mesh)",
                   gap > rig.Radius - 0.05f && gap < rig.Radius + 0.25f,
                   $"capsuleCentreToFace={gap:F2} m (radius {rig.Radius:F2}) floorY={floor.point.y:F2} hit={floor.collider.name}");
+
+            yield return ThrowAtWall(start, normal, solidSection, faceOffset, wall);
+        }
+
+        /// Full-charge throw of a 2 kg brick at the solid part of Wall Door 02: it must hit the wall's face and end
+        /// on the room side - not pass through, not lodge inside. Brick and carrier are runtime-only (nothing saved).
+        IEnumerator ThrowAtWall(Vector3 feet, Vector3 normal, Vector3 target, float faceOffset, Transform wall)
+        {
+            PhysicsCarrier carrier = rig.Interactor.GetComponent<PhysicsCarrier>();
+            bool addedCarrier = carrier == null;
+            if (addedCarrier) carrier = rig.Interactor.gameObject.AddComponent<PhysicsCarrier>();
+
+            var brickGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            brickGo.name = "_WalkthroughBrick (runtime)";
+            brickGo.transform.localScale = new Vector3(0.22f, 0.07f, 0.11f);
+            var rb = brickGo.AddComponent<Rigidbody>();
+            rb.mass = 2f;
+            var brick = brickGo.AddComponent<Carryable>();
+
+            float WallSigned(Vector3 p) => Vector3.Dot(p - wall.position, normal);
+            // Throw from 3 m if there is floor there (a longer flight), else from where the walk started.
+            Vector3 back = feet + normal * 1.4f;
+            if (Physics.Raycast(back + Vector3.up * 2f, Vector3.down, out RaycastHit floor, 4f, ~0, QueryTriggerInteraction.Ignore))
+                feet = floor.point + Vector3.up * 0.05f;
+            rig.Aim(feet, target + Vector3.up * 1.4f);
+            brickGo.transform.position = carrier.HoldPoint;
+            rb.position = brickGo.transform.position;
+            Physics.SyncTransforms();
+            carrier.Use(brick);
+            yield return new WaitForSeconds(0.5f);
+
+            bool hit = false;
+            Vector3 hitPoint = default;
+            void OnImpact(NoiseRecord r) { if (!hit && r.Emitter == brickGo) { hit = true; hitPoint = r.Position; } }
+            InteractionNoise.Emitted += OnImpact;
+            bool held = carrier.Held == brick;
+            carrier.Throw(1f);
+            yield return WaitFor(() => hit, 1.5f);
+            yield return new WaitForSeconds(1.5f);
+            InteractionNoise.Emitted -= OnImpact;
+
+            float end = WallSigned(rb.position);
+            yield return Shot("walldoor02_throw");
+            Check("brick thrown at 12 m/s hits Wall Door 02 and stays on the room side (no pass-through, not stuck in it)",
+                  held && hit && Mathf.Abs(WallSigned(hitPoint) - faceOffset) < 0.15f && end > faceOffset + 0.02f,
+                  $"held={held} hit={hit} hitFromFace={WallSigned(hitPoint) - faceOffset:F2} endFromCentre={end:F2} (face {faceOffset:F2})");
+
+            Destroy(brickGo);
+            if (addedCarrier) Destroy(carrier);
         }
 
         // ------------------------------------------------------------------------------- helpers
@@ -278,6 +327,8 @@ namespace Echo.DevTools
         IEnumerator Shot(string name)
         {
             yield return new WaitForEndOfFrame();
+            // Unity empties Temp/ on restart and CaptureScreenshot doesn't create folders.
+            System.IO.Directory.CreateDirectory("Temp/Screenshots");
             ScreenCapture.CaptureScreenshot($"Temp/Screenshots/walk_{++shot:00}_{name}.png");
             yield return null;
         }
