@@ -3,7 +3,10 @@ using System.Collections;
 using Echo.Interaction;
 using Echo.Navigation;
 using Echo.UI;
+using StarterAssets;
+using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace Echo.DevTools
 {
@@ -340,19 +343,6 @@ namespace Echo.DevTools
                   brick.Body.interpolation == RigidbodyInterpolation.None && brick.Body.collisionDetectionMode == CollisionDetectionMode.Discrete,
                   $"respawned={respawned} pos={brick.Body.position} lastValid={valid} interp={brick.Body.interpolation} mode={brick.Body.collisionDetectionMode}");
 
-            // 5. too heavy (control: the same crate is liftable when the limit is raised)
-            Aim(StandBy(heavyCrate, wallN), heavyCrate.Body.worldCenterOfMass);
-            focused = ReferenceEquals(interactor.Focus, heavyCrate);
-            verb = heavyCrate.GetPrompt(interactor);
-            interactor.TryInteract();
-            float limit = carrier.liftMassLimit;
-            carrier.liftMassLimit = heavyCrate.Body.mass + 1f;
-            bool control = heavyCrate.GetPrompt(interactor) == "Pick up";
-            carrier.liftMassLimit = limit;
-            Check("40 kg crate shows Too heavy and is not lifted",
-                  focused && verb == "Too heavy" && carrier.Held == null && heavyCrate.Body.mass >= 40f && heavyCrate.Body.useGravity && control,
-                  $"focused={focused} verb={verb} mass={heavyCrate.Body.mass} held={(carrier.Held != null ? carrier.Held.name : "none")} control={control}");
-
             // 6. metal basin: lifts, E drops it, the player collision comes back once clear
             Aim(StandBy(basin, wallN), basin.Body.worldCenterOfMass);
             interactor.TryInteract();
@@ -364,7 +354,10 @@ namespace Echo.DevTools
             Check("3 kg metal basin lifts, E drops it, player collision restored once clear",
                   lifted && dropped && restored, $"lifted={lifted} dropped={dropped} collisionRestored={restored}");
 
+            yield return BarricadeChecks(wallN, cc);
+
             // restore the props
+            carrier.SimulateDragHold = false;
             carrier.Drop();
             for (int i = 0; i < props.Length; i++)
             {
@@ -375,6 +368,135 @@ namespace Echo.DevTools
                 rb.rotation = start[i].rotation;
                 props[i].transform.SetPositionAndRotation(start[i].position, start[i].rotation);
             }
+        }
+
+        // ============================================================================== barricades
+        /// Drag mode on the 40 kg crate. A NavMesh is baked at runtime over the test floor (the sandbox has none),
+        /// so carving can be observed: SamplePosition finds no NavMesh inside a carved hole.
+        IEnumerator BarricadeChecks(Vector3 awayFromWall, CharacterController cc)
+        {
+            Carryable crate = heavyCrate;
+            Collider crateCol = crate.Colliders[0];
+            var fpc = interactor.GetComponent<FirstPersonController>();
+            var obstacle = crate.GetComponentInChildren<NavMeshObstacle>();
+            if (obstacle == null)
+            {
+                Check("barricade has a NavMeshObstacle", false, "run ECHO > Sandbox > Build Throwable Test Area");
+                yield break;
+            }
+
+            Transform floor = thinWall.transform.parent.Find("Floor");
+            var navGo = new GameObject("_SelfTestNavMesh (runtime)");
+            navGo.transform.position = floor.position;
+            var surface = navGo.AddComponent<NavMeshSurface>();
+            surface.collectObjects = CollectObjects.Volume;
+            surface.center = Vector3.zero;
+            surface.size = new Vector3(12f, 4f, 12f);
+            surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+            surface.BuildNavMesh();
+            obstacle.enabled = false;   // re-register, so it carves the NavMesh that was just built
+            obstacle.enabled = true;
+            float floorY = crateCol.bounds.min.y;
+            bool Carved(Vector3 p) => !NavMesh.SamplePosition(new Vector3(p.x, floorY, p.z), out _, 0.3f, NavMesh.AllAreas);
+            yield return new WaitForSeconds(obstacle.carvingTimeToStationary + 0.5f);
+
+            Vector3 startCentre = crateCol.bounds.center;
+            bool carvedAtRest = Carved(startCentre), meshExists = !Carved(startCentre + awayFromWall * 2f);
+
+            // 1. can't lift: prompt "[Hold E] Drag", drag mode, stays on the floor
+            Vector3 stand = StandOff(crateCol, awayFromWall, 0.9f, cc.radius);
+            Aim(stand, startCentre);
+            yield return null;   // prompt UI updates
+            bool focused = ReferenceEquals(interactor.Focus, crate);
+            string verb = crate.GetPrompt(interactor);
+            string text = prompt.CurrentText;
+            float limit = carrier.liftMassLimit;
+            carrier.liftMassLimit = crate.Body.mass + 1f;
+            bool control = crate.GetPrompt(interactor) == "Pick up";
+            carrier.liftMassLimit = limit;
+            float baseSpeed = fpc != null ? fpc.MoveSpeed : 0f;
+            carrier.SimulateDragHold = true;
+            bool used = interactor.TryInteract();
+            float y0 = crateCol.bounds.center.y;
+            yield return new WaitForSeconds(0.3f);
+            Check("40 kg crate can't be lifted: prompt [Hold E] Drag, drag mode, gravity on, stays on the floor",
+                  focused && verb == "Drag" && text.Contains("[Hold ") && control && used && carrier.Held == crate &&
+                  carrier.HeldMode == PhysicsCarrier.Mode.Drag && crate.Body.useGravity && Mathf.Abs(crateCol.bounds.center.y - y0) < 0.03f,
+                  $"focused={focused} verb={verb} prompt='{text}' control={control} mode={carrier.HeldMode} gravity={crate.Body.useGravity} dy={crateCol.bounds.center.y - y0:F3}");
+
+            // 2. drag 2 m (the rig walks the real CharacterController) - upright, along the floor, scrape noise
+            bool slowed = fpc != null && Mathf.Approximately(fpc.MoveSpeed, baseSpeed * carrier.dragSpeedFactor);
+            int scrapes = 0;
+            NoiseRecord scrape = default;
+            void OnScrape(NoiseRecord r) { if (r.Emitter == crate.gameObject && r.Type == NoiseType.ObjectDrop) { scrapes++; scrape = r; } }
+            InteractionNoise.Emitted += OnScrape;
+            Vector3 before = crateCol.bounds.center;
+            yield return rig.Walk(-awayFromWall, 2f, 2f);
+            InteractionNoise.Emitted -= OnScrape;
+            Vector3 moved = crateCol.bounds.center - before;
+            float horizontal = new Vector2(moved.x, moved.z).magnitude;
+            float tilt = Vector3.Angle(crate.transform.up, Vector3.up);
+            var upright = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
+            bool frozen = (crate.Body.constraints & upright) == upright;
+            // While moving, Unity removes a carveOnlyStationary hole (agents avoid the moving obstacle locally) and
+            // carves nothing new: no NavMesh update per frame of the drag.
+            bool oldReleased = !Carved(startCentre), newNotCarved = !Carved(crateCol.bounds.center);
+            Check("drag moves it upright along the floor (X/Z rotation frozen)",
+                  carrier.Held == crate && horizontal > 1.3f && Mathf.Abs(moved.y) < 0.05f && tilt < 2f && frozen,
+                  $"held={carrier.Held == crate} horizontal={horizontal:F2} dy={moved.y:F3} tilt={tilt:F1} frozen={frozen}");
+            Check("player slowed to 60% while dragging", slowed,
+                  $"moveSpeed={(fpc != null ? fpc.MoveSpeed : -1f):F2} base={baseSpeed:F2} factor={carrier.dragSpeedFactor}");
+            Check("drag noise: ObjectDrop 0.25 every 0.6 s while moving (Player source)",
+                  scrapes >= 2 && Mathf.Approximately(scrape.Intensity, carrier.dragNoiseIntensity) && scrape.Source == NoiseSource.Player,
+                  $"scrapes={scrapes} in ~1 s intensity={scrape.Intensity:F2} source={scrape.Source}");
+
+            // 3. release: brakes hard, player speed restored
+            carrier.SimulateDragHold = false;
+            yield return new WaitForFixedUpdate();
+            yield return new WaitForFixedUpdate();
+            bool released = carrier.Held == null;
+            bool speedBack = fpc == null || Mathf.Approximately(fpc.MoveSpeed, baseSpeed);
+            Vector3 atRelease = crateCol.bounds.center;
+            yield return new WaitForSeconds(0.5f);
+            Vector3 slide = crateCol.bounds.center - atRelease;
+            Vector3 v = crate.Body.linearVelocity;
+            Check("it stops on release (< 0.15 m slide, at rest after 0.5 s) and the player's speed is restored",
+                  released && new Vector2(slide.x, slide.z).magnitude < 0.15f && new Vector2(v.x, v.z).magnitude < 0.05f && speedBack,
+                  $"released={released} slide={new Vector2(slide.x, slide.z).magnitude:F3} speed={new Vector2(v.x, v.z).magnitude:F3} speedRestored={speedBack}");
+
+            // 4. carving only when stationary
+            yield return new WaitForSeconds(obstacle.carvingTimeToStationary + 0.5f);
+            bool newCarved = Carved(crateCol.bounds.center), oldFreed = !Carved(startCentre);
+            Check("NavMeshObstacle carves only when stationary (no carving while dragged, re-carved once at rest)",
+                  obstacle.carving && obstacle.carveOnlyStationary && carvedAtRest && meshExists &&
+                  oldReleased && newNotCarved && newCarved && oldFreed,
+                  $"carveOnlyStationary={obstacle.carveOnlyStationary} atRest={carvedAtRest} meshExists={meshExists} " +
+                  $"whileDragged: oldReleased={oldReleased} newFree={newNotCarved} | afterRest: new={newCarved} oldFree={oldFreed}");
+
+            // 5. the player can't walk through a placed barricade
+            Vector3 centre = crateCol.bounds.center;
+            Aim(StandOff(crateCol, awayFromWall, 1.2f, cc.radius), centre);
+            yield return rig.Walk(-awayFromWall, 3f, 2f);
+            Vector3 feetLevel = rig.Player.position;
+            feetLevel.y = centre.y;
+            Vector3 closest = crateCol.ClosestPoint(feetLevel);
+            float gap = new Vector2(closest.x - feetLevel.x, closest.z - feetLevel.z).magnitude;
+            Check("player can't walk through a placed barricade",
+                  gap >= cc.radius - 0.05f && !Physics.GetIgnoreCollision(crateCol, cc),
+                  $"capsuleCentreToCrate={gap:F2} (radius {cc.radius:F2}) ignored={Physics.GetIgnoreCollision(crateCol, cc)}");
+
+            surface.RemoveData();
+            Destroy(navGo);
+        }
+
+        /// Feet `gap` metres (plus the capsule radius) from the collider's face on the `dir` side.
+        static Vector3 StandOff(Collider c, Vector3 dir, float gap, float radius)
+        {
+            Bounds b = c.bounds;
+            float extent = Mathf.Abs(dir.x) * b.extents.x + Mathf.Abs(dir.z) * b.extents.z;
+            Vector3 p = b.center + dir * (extent + gap + radius);
+            p.y = b.min.y + 0.05f;
+            return p;
         }
 
         /// Feet 1.4 m from the prop, on the side away from the wall.
