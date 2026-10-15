@@ -5,6 +5,8 @@ using UnityEngine;
 namespace Echo.AI.Tracker
 {
     public enum TrackerState { Idle, Analyse, Intercept, Hold, Search, Attack }
+    /// Why the last interception MoveTo was issued (diagnostics: overlay, scenarios, checks).
+    public enum TrackerReplan { New, Band, World, GoalMoved, Failed }
     public enum TrackerGait { Walk, Run }
     public enum TrackerCommandKind { None, MoveTo, Stop, Attack }
 
@@ -42,8 +44,11 @@ namespace Echo.AI.Tracker
     ///   Idle --credible sound--> Analyse (one tick) --> Intercept (run if C high, walk if medium)
     ///   Intercept --arrived--> Hold (listen) --nothing--> Search (best-first) --budget spent--> Idle
     ///   Intercept --C low / no candidate--> Search;   any --close precise sound or touch--> Attack
-    /// Re-plans only when the prediction moves > replanDistance, the confidence band changes, a door
-    /// changes, or the mover fails (then the failed node is banned for this trail).
+    /// Re-plans only when a door changes, the mover fails (then the failed node is banned for this trail), the
+    /// current goal stops being a candidate, or a node > replanDistance away beats the current goal's CURRENT score
+    /// by switchMargin (commitment: near-equal candidates no longer flip the goal on perception noise), or a goal
+    /// picked as an interception loses its claim (the player got there first). A band or gait change re-issues the
+    /// same goal at the new gait. Scoring is anchored on the fitted trail (fitAnchor), not the raw latest percept.
     public sealed class TrackerDecider
     {
         public readonly TrackerSettings Settings;
@@ -55,6 +60,11 @@ namespace Echo.AI.Tracker
         public readonly HeatMap Heat = new();
 
         public TrackerState State { get; private set; } = TrackerState.Idle;
+        public TrackerReplan LastReplan { get; private set; }
+        /// The trail point the last evaluation scored from: the latest sound, at the fitted position if fitAnchor.
+        public TrackerObservation Anchor { get; private set; }
+        /// Interception MoveTos issued since the last Reset.
+        public int IssueCount { get; private set; }
         public ConfidenceParts Confidence { get; private set; }
         public ConfidenceBand Band { get; private set; }
         public bool HasVelocity { get; private set; }
@@ -79,7 +89,7 @@ namespace Echo.AI.Tracker
 
         bool[] banned = Array.Empty<bool>();
         float stateStart, rms, holdUntil;
-        bool searchHolding, needHome, interceptGoal, runGoal;
+        bool searchHolding, needHome, interceptGoal, runGoal, scoredPick, goalScored, goalClaimed;
         int selfNode, goalVersion;
         TrackerGait goalGait;
 
@@ -166,6 +176,7 @@ namespace Echo.AI.Tracker
                     Band = band;
                     if (!has || Band == ConfidenceBand.Search) return EnterSearch(now);
                     Enter(TrackerState.Intercept, now);
+                    LastReplan = TrackerReplan.New;
                     return Issue(target, node);
                 }
 
@@ -180,6 +191,7 @@ namespace Echo.AI.Tracker
                         if (GoalNode >= 0) banned[GoalNode] = true;
                         if (!Evaluate(now, input.Self, input.SelfSpeed, s.runToIntercept ? s.runSpeed : TrackerMotion.GaitSpeed(Band, s), out target, out node))
                             return EnterSearch(now);
+                        LastReplan = TrackerReplan.Failed;
                         return Issue(target, node);
                     }
                     if (input.Arrived)
@@ -188,9 +200,22 @@ namespace Echo.AI.Tracker
                         HasGoal = false;
                         return TrackerCommand.Stop;
                     }
+                    if (s.switchMargin > 0f && HasGoal && World.Version == goalVersion && KeepGoal(target))
+                    {
+                        // Committed: same goal; only the gait may change (band change or the goal's adv crossing runAdvMin).
+                        interceptGoal = Scorer.Claimed[GoalNode];
+                        runGoal = Scorer.Advantage[GoalNode] > s.runAdvMin;
+                        if (!bandChanged && GaitFor() == goalGait) return TrackerCommand.None;
+                        LastReplan = TrackerReplan.Band;
+                        return Issue(Goal, GoalNode, kept: true);
+                    }
                     if (!HasGoal || bandChanged || World.Version != goalVersion ||
                         Vector3.Distance(target, Goal) > s.replanDistance)
+                    {
+                        LastReplan = !HasGoal ? TrackerReplan.New : bandChanged ? TrackerReplan.Band
+                                   : World.Version != goalVersion ? TrackerReplan.World : TrackerReplan.GoalMoved;
                         return Issue(target, node);
+                    }
                     return TrackerCommand.None;
                 }
 
@@ -255,7 +280,7 @@ namespace Echo.AI.Tracker
             if (!Memory.HasLast) { HasVelocity = false; Confidence = default; return false; }
             var last = Memory.Last;
 
-            HasVelocity = VelocityEstimator.TryEstimate(Memory, now, s, out var v, out rms, out float raw, out float moving);
+            HasVelocity = VelocityEstimator.TryEstimate(Memory, now, s, out var v, out rms, out float raw, out float moving, out var anchor);
             Velocity = HasVelocity ? v : Vector3.zero;
             PlayerSpeed = !HasVelocity ? 0f : s.playerEtaSpeed switch
             {
@@ -263,13 +288,19 @@ namespace Echo.AI.Tracker
             };
             float margin = 0f;
             bool has = false;
-            interceptGoal = runGoal = false;
+            interceptGoal = runGoal = scoredPick = false;
+            if (HasVelocity && s.fitAnchor)
+            {
+                last.Position = new Vector3(anchor.x, last.Position.y, anchor.z);
+                last.Node = World.Nearest(last.Position);
+            }
+            Anchor = last;
             if (HasVelocity &&
                 Scorer.Evaluate(Routes, last, Velocity, self, selfNode, now, Heat, banned, s, gaitSpeed, selfSpeed,
                                PlayerSpeed) &&
                 Scorer.BestScore >= s.minInterceptScore)
             {
-                has = true;
+                has = scoredPick = true;
                 node = Scorer.Best; target = World.Position(node);
                 interceptGoal = Scorer.Claimed[node];
                 runGoal = Scorer.Advantage[node] > s.runAdvMin;
@@ -289,11 +320,28 @@ namespace Echo.AI.Tracker
             return has;
         }
 
-        TrackerCommand Issue(Vector3 target, int node)
+        /// Commitment test for a scored goal against this tick's scored best `target`. Unscored goals (latest
+        /// sound) keep the distance rule.
+        bool KeepGoal(Vector3 target)
         {
+            var s = Settings;
+            if (!goalScored || !scoredPick || GoalNode < 0 || GoalNode >= Scorer.IsCandidate.Length) return false;
+            if (!Scorer.IsCandidate[GoalNode] || banned[GoalNode]) return false;      // infeasible now
+            if (goalClaimed && !Scorer.Claimed[GoalNode]) return false;              // interception lost (player passed it)
+            if (Vector3.Distance(target, Goal) <= s.replanDistance) return true;      // same place, as before
+            return Scorer.BestScore < Scorer.Scores[GoalNode] + s.switchMargin;      // not clearly better
+        }
+
+        TrackerGait GaitFor() =>
+            Band == ConfidenceBand.Run || (Settings.runToIntercept && runGoal && Band != ConfidenceBand.Search)
+                ? TrackerGait.Run : TrackerGait.Walk;
+
+        TrackerCommand Issue(Vector3 target, int node, bool kept = false)
+        {
+            IssueCount++;
+            if (!kept) { goalScored = scoredPick && node == Scorer.Best; goalClaimed = goalScored && interceptGoal; }
             Goal = target; GoalNode = node; HasGoal = true;
-            bool run = Band == ConfidenceBand.Run || (Settings.runToIntercept && runGoal && Band != ConfidenceBand.Search);
-            goalGait = run ? TrackerGait.Run : TrackerGait.Walk;
+            goalGait = GaitFor();
             goalVersion = World.Version;
             return new TrackerCommand(TrackerCommandKind.MoveTo, target, goalGait);
         }

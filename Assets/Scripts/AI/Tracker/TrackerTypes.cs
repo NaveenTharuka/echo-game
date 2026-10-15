@@ -177,6 +177,14 @@ namespace Echo.AI.Tracker
 
         [Header("Behaviour")]
         public float replanDistance = 6f;
+        [Tooltip("Commitment: keep the current scored goal unless the new best beats its CURRENT score by this much " +
+                 "(or it stops being a candidate, loses its interception claim, or a door changes). 0 = phase-3 rule " +
+                 "(switch on any > replanDistance move).")]
+        public float switchMargin = 0.5f;           // 15 Oct replay, 40 seeds x 2 layouts: 0.25 / 0.5 / 1.0 all remove A-B-A flips in a2;
+                                                    // 0.5 = fewest flips in the far-home layout without the 1.0 loss of interceptions
+        [Tooltip("Anchor the prediction and candidate reach on the fitted trail position at the latest sound's time " +
+                 "instead of the raw latest percept (which carries its full error).")]
+        public bool fitAnchor = true;
         public float holdTime = 4f;
         public float attackTime = 1.8f;
         public float strikeDistance = 2.2f;
