@@ -178,8 +178,24 @@ namespace Echo.DevTools
             int goal = -1; float goalAdv = 0f, pickedAt = 0f, walk = 0f, stopped = 0f, attack = 0f, predT = 0f, predP = 0f;
             bool scored = false;
             agent.ResetAgent(C(4, 5), true);                  // listening post: interception is feasible from here
+            // Every MoveTo the decider issues (printed only if the run fails): why, where, and how close the race was.
+            var issues = new StringBuilder();
+            int issueCount = d.IssueCount, issueLines = 0;
             System.Func<bool> watch = () =>
             {
+                if (d.IssueCount != issueCount)
+                {
+                    issueCount = d.IssueCount;
+                    if (issueLines++ < 80)
+                    {
+                        var sc = d.Scorer; int b = d.GoalNode, s2 = sc.Second;
+                        Vector3 me = Feet(agent.transform);
+                        issues.Append($"\n    t={Time.time:0.0} {d.LastReplan} goal={b} S={(b >= 0 && b < sc.Scores.Length ? sc.Scores[b] : 0f):0.00} " +
+                                      $"2nd={s2} S2={(s2 >= 0 ? sc.Scores[s2] : 0f):0.00} adv={(b >= 0 && b < sc.Advantage.Length ? sc.Advantage[b] : 0f):0.00} " +
+                                      $"band={d.Band} C={d.Confidence.Value:0.00} me=({me.x:0.0},{me.z:0.0}) spd={nav.velocity.magnitude:0.0} " +
+                                      $"pred=({d.Predicted.x:0.0},{d.Predicted.z:0.0}) ghost=({ghost.position.x:0.0},{ghost.position.z:0.0})");
+                    }
+                }
                 if (d.State == TrackerState.Intercept && d.HasVelocity && d.GoalNode >= 0 && d.GoalNode != goal)
                 {
                     goal = d.GoalNode; goalAdv = d.Scorer.Advantage[goal]; pickedAt = Time.time; walk = stopped = attack = 0f;
@@ -219,8 +235,10 @@ namespace Echo.DevTools
                 if (x.Scored && x.Ghost >= 0f && x.Attack == 0f)
                 { etaErrTracker.Add(x.Tracker - x.Picked - x.PredT); etaErrRunner.Add(x.Ghost - x.Picked - x.PredP); }
             }
+            bool pass = hit >= 0 && arrivals[hit].Adv > 0f;
+            if (!pass) sb.Append($"\n  MoveTo log ({issueLines}):{issues}");
             Check("a straight run: Tracker reaches an interception node before the runner (adv > 0)",
-                  hit >= 0 && arrivals[hit].Adv > 0f, arrivals.Count == 0 ? $"no interception arrival; state={d.State} heard={d.Accepted}" : sb.ToString());
+                  pass, arrivals.Count == 0 ? $"no interception arrival; state={d.State} heard={d.Accepted}{(pass ? "" : sb.ToString())}" : sb.ToString());
         }
 
         struct Arrival { public int Node; public float Tracker, Ghost, Adv, Picked, Walk, Stopped, Attack, PredT, PredP; public bool Scored; }

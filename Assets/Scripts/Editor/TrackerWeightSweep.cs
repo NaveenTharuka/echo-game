@@ -34,11 +34,15 @@ namespace Echo.EditorTools
             public float RunAdvMin;
             public AdvantageMode AdvMode;
             public float Prox, Dir, Adv, Heat;
+            /// Goal commitment; null = shipped settings (switchMargin, fitAnchor).
+            public float? SwitchMargin;
+            public bool? FitAnchor;
             public Config(string name, bool routeLead, bool gate, float prox, float dir, float adv, float heat,
                           bool etaGait = true, bool runToIntercept = false, PlayerEtaSpeed playerSpeed = PlayerEtaSpeed.Shrunk)
             {
                 Name = name; RouteLead = routeLead; Gate = gate; Prox = prox; Dir = dir; Adv = adv; Heat = heat;
                 EtaGait = etaGait; RunToIntercept = runToIntercept; PlayerSpeed = playerSpeed; RunAdvMin = 0f; AdvMode = AdvantageMode.Reward;
+                SwitchMargin = null; FitAnchor = null;
             }
             public Config With(string name, PlayerEtaSpeed playerSpeed, float runAdvMin = 0f) =>
                 new(name, RouteLead, Gate, Prox, Dir, Adv, Heat, EtaGait, RunToIntercept, playerSpeed) { RunAdvMin = runAdvMin };
@@ -121,6 +125,20 @@ namespace Echo.EditorTools
             new Config("W3 dir-heavy 1.0/1.6/1.0/0.4",   routeLead, gate, 1.0f, 1.6f, 1.0f, 0.4f, eta.EtaGait, eta.RunToIntercept, eta.PlayerSpeed) { RunAdvMin = eta.RunAdvMin, AdvMode = eta.AdvMode },
         };
 
+        /// Goal commitment (15 Oct, re-planning loop in scenario a): the shipped rule (keep the goal unless beaten by
+        /// switchMargin, fitted anchor) against the phase-3 rule and each half. Must not cost catches.
+        static Config[] Commitment(Config w)
+        {
+            var shipped = new TrackerSettings();
+            var list = new Config[4];
+            for (int i = 0; i < list.Length; i++) list[i] = w;
+            list[0].Name = $"K0 margin {shipped.switchMargin} + fitted anchor (current)";
+            list[1].Name = "K1 phase-3 rule (no commitment, raw anchor)"; list[1].SwitchMargin = 0f; list[1].FitAnchor = false;
+            list[2].Name = $"K2 margin {shipped.switchMargin}, raw anchor"; list[2].FitAnchor = false;
+            list[3].Name = "K3 fitted anchor, no margin"; list[3].SwitchMargin = 0f;
+            return list;
+        }
+
         /// The variants (V0-V3) with the adopted ETA model.
         static Config[] VariantsWith(Config eta)
         {
@@ -164,7 +182,9 @@ namespace Echo.EditorTools
             log($"Adopted advantage mode: {a.Name}");
             var w = Pick(WeightSets(v.RouteLead, v.Gate, a), worlds, log);
             log($"Adopted weight set: {w.Name}");
-            return w;
+            var k = Pick(Commitment(w), worlds, log);
+            log($"Adopted goal commitment: {k.Name}");
+            return k;
         }
 
         static Config Pick(Config[] configs, (string, TrackerGraph)[] worlds, Action<string> log)
@@ -227,6 +247,8 @@ namespace Echo.EditorTools
                 wProx = c.Prox, wDir = c.Dir, wAdv = c.Adv, wHeat = c.Heat, etaFromGait = c.EtaGait, runToIntercept = c.RunToIntercept,
                 playerEtaSpeed = c.PlayerSpeed, runAdvMin = c.RunAdvMin, advMode = c.AdvMode
             };
+            if (c.SwitchMargin.HasValue) s.switchMargin = c.SwitchMargin.Value;
+            if (c.FitAnchor.HasValue) s.fitAnchor = c.FitAnchor.Value;
             var routes = new RouteService(g, s);
 
             // Runner route (>= 36 m) and Tracker start (15-35 m by route from the runner).

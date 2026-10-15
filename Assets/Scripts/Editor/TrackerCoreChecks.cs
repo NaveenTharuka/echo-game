@@ -36,6 +36,7 @@ namespace Echo.EditorTools
             ConfidenceRisesAndDecays();
             BestFirstOrder();
             DeciderEdgeCases();
+            GoalCommitment();
             Performance();
             log($"{total - failures}/{total} checks passed");
             return failures;
@@ -129,7 +130,7 @@ namespace Echo.EditorTools
             // raw = the data, moving = between the data and the 3 m/s prior.
             m.Clear();
             for (int i = 0; i < 3; i++) Feed(m, g, r, new Vector3(10f + 2.25f * i, 0f, 0f), i * 0.5f, 4f);
-            VelocityEstimator.TryEstimate(m, 1f, s, out v, out _, out float raw, out float moving);
+            VelocityEstimator.TryEstimate(m, 1f, s, out v, out _, out float raw, out float moving, out _);
             Check("noisy short trail: v shrunk; ETA_player speeds raw = 4.5, moving between prior 3 and 4.5",
                   v.magnitude < 2f && Mathf.Abs(raw - 4.5f) < 0.05f && moving > s.velocityPrior && moving < raw,
                   $"|v|={v.magnitude:0.00} raw={raw:0.00} moving={moving:0.00}");
@@ -264,7 +265,7 @@ namespace Echo.EditorTools
                 {
                     var check = new InterceptScorer();
                     float speed = c.Gait == TrackerGait.Run ? s.runSpeed : s.walkSpeed;
-                    check.Evaluate(d.Routes, d.Memory.Last, d.Velocity, sim.Self, g.Nearest(sim.Self), sim.Now, d.Heat, null, s, speed,
+                    check.Evaluate(d.Routes, d.Anchor, d.Velocity, sim.Self, g.Nearest(sim.Self), sim.Now, d.Heat, null, s, speed,
                                    playerSpeed: d.PlayerSpeed);
                     consistent = c.Gait == expect && d.Band == expectBand && check.Best == d.GoalNode &&
                                  Mathf.Abs(check.Advantage[d.GoalNode] - d.Scorer.Advantage[d.GoalNode]) < 1e-4f;
@@ -475,6 +476,60 @@ namespace Echo.EditorTools
             Check("player death: reset to Idle, memory and heat cleared, going home",
                   sim.D.State == TrackerState.Idle && sim.D.Memory.Count == 0 && c.Kind == TrackerCommandKind.MoveTo && c.Target == sim.D.Home,
                   $"state={sim.D.State} mem={sim.D.Memory.Count} cmd={c.Kind}");
+        }
+
+        /// Re-planning loop (15 Oct, scenario a in Unity): a runner crosses the Sandbox_Tracker corridor, heard every
+        /// 0.5 s with 3-5 m error. Under the phase-3 rule (switch on any > replanDistance move, raw latest percept as the
+        /// anchor) the goal flips back and forth between neighbouring nodes (A -> B -> A). Commitment + fitted anchor
+        /// must remove most of those flips and still bring the Tracker as close to the runner (straight-line mover).
+        static void GoalCommitment()
+        {
+            var old = new TrackerSettings { switchMargin = 0f, fitAnchor = false };
+            RunCommitment(old, out int oldFlips, out int oldMoves, out float oldNear);
+            RunCommitment(new TrackerSettings(), out int flips, out int moves, out float near);
+            string seen = $"20 runs; phase-3 rule: {oldFlips} A-B-A flips, {oldMoves} MoveTos, mean closest approach {oldNear:0.0} m; " +
+                          $"now: {flips} flips, {moves} MoveTos, {near:0.0} m";
+            Check("noisy trail reproduces the re-planning loop under the phase-3 rule", oldFlips >= 5, seen);
+            Check("commitment: flips cut by >= 4x, the Tracker gets as close to the runner", flips * 4 <= oldFlips && near <= oldNear + 0.5f, seen);
+        }
+
+        static void RunCommitment(TrackerSettings s, out int flips, out int moves, out float approach)
+        {
+            var g = SandboxTrackerLayout.BuildGraph(out _);
+            flips = moves = 0; approach = 0f;
+            var percepts = new List<TrackerPercept>();
+            for (int seed = 0; seed < 20; seed++)
+            {
+                var rng = new System.Random(seed);
+                Vector3 self = SandboxTrackerLayout.Centre(4, 5), runner = SandboxTrackerLayout.Centre(0, 4);
+                var d = new TrackerDecider(g, s, self);
+                int g1 = -1, g2 = -1; float speed = 0f, nextSound = 0f, closest = float.MaxValue; Vector3 goal = self;
+                for (float t = 0.2f; t < 14f; t += 0.2f)
+                {
+                    runner.x = Mathf.Min(runner.x + 3f * 0.2f, SandboxTrackerLayout.Centre(8, 4).x);
+                    if (t >= nextSound)
+                    {
+                        nextSound = t + 0.5f;
+                        float err = 3f + 2f * (float)rng.NextDouble(), ang = (float)(rng.NextDouble() * Math.PI * 2);
+                        float rad = err * Mathf.Sqrt((float)rng.NextDouble());
+                        percepts.Add(new TrackerPercept(runner + new Vector3(Mathf.Cos(ang) * rad, 0f, Mathf.Sin(ang) * rad), err, t, HeardKind.Run));
+                    }
+                    closest = Mathf.Min(closest, Vector3.Distance(self, runner));
+                    bool arrived = speed > 0f && self == goal;
+                    var c = d.Tick(new TrackerTickInput { Now = t, Self = self, Arrived = arrived, SelfSpeed = speed }, percepts);
+                    percepts.Clear();
+                    if (c.Kind == TrackerCommandKind.MoveTo) { goal = c.Target; speed = c.Gait == TrackerGait.Run ? s.runSpeed : 2.2f; }
+                    else if (c.Kind == TrackerCommandKind.Stop) speed = 0f;
+                    if (c.Kind == TrackerCommandKind.MoveTo && d.State == TrackerState.Intercept)
+                    {
+                        moves++;
+                        if (d.LastReplan == TrackerReplan.GoalMoved && d.GoalNode == g2) flips++;
+                        if (d.GoalNode != g1) { g2 = g1; g1 = d.GoalNode; }
+                    }
+                    self = Vector3.MoveTowards(self, goal, speed * 0.2f);
+                }
+                approach += closest / 20f;
+            }
         }
 
         static void Performance()
