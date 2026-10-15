@@ -31,6 +31,8 @@ namespace Echo.EditorTools
             StraightRun();
             CredibilityGate();
             ScorerPrefersAhead();
+            EtaFollowsGait();
+            AdvantageModes();
             ConfidenceRisesAndDecays();
             BestFirstOrder();
             DeciderEdgeCases();
@@ -122,6 +124,16 @@ namespace Echo.EditorTools
             VelocityEstimator.TryEstimate(m, 3f, s, out v, out _);
             Check("velocity capped at v_max", Mathf.Abs(v.magnitude - s.maxPlayerSpeed) < 1e-3f, $"|v|={v.magnitude:0.00}");
 
+            // Three 4 m-error sounds over 1 s on a 4.5 m/s line: the shrunk v is slow (steady heading, humble
+            // prediction); the ETA_player speeds are not shrunk towards 0 (else adv is optimistic, Scenario a, 15 Oct):
+            // raw = the data, moving = between the data and the 3 m/s prior.
+            m.Clear();
+            for (int i = 0; i < 3; i++) Feed(m, g, r, new Vector3(10f + 2.25f * i, 0f, 0f), i * 0.5f, 4f);
+            VelocityEstimator.TryEstimate(m, 1f, s, out v, out _, out float raw, out float moving);
+            Check("noisy short trail: v shrunk; ETA_player speeds raw = 4.5, moving between prior 3 and 4.5",
+                  v.magnitude < 2f && Mathf.Abs(raw - 4.5f) < 0.05f && moving > s.velocityPrior && moving < raw,
+                  $"|v|={v.magnitude:0.00} raw={raw:0.00} moving={moving:0.00}");
+
             m.Clear();
             Feed(m, g, r, new Vector3(10f, 0f, 0f), 0f);
             Check("single sound gives no velocity", !VelocityEstimator.TryEstimate(m, 0.5f, s, out _, out _), $"obs={m.Count}");
@@ -195,6 +207,106 @@ namespace Echo.EditorTools
                     foreach (int e in east) anyEast |= sc.IsCandidate[e];
                     Check("locked door drops every candidate behind it", ok && !anyEast && best.x <= 0f, seen);
                 }
+            }
+        }
+
+        /// ETA_tracker is the calibrated motion model at the gait the Tracker will really use (Scenario a, 15 Oct:
+        /// the phase-3 ETA assumed run speed while the Tracker walked in the Walk band).
+        static void EtaFollowsGait()
+        {
+            var s = new TrackerSettings();
+            float standRun = TrackerMotion.Eta(10f, s.runSpeed, 0f, s), movingRun = TrackerMotion.Eta(10f, s.runSpeed, s.runSpeed, s);
+            float standWalk = TrackerMotion.Eta(10f, s.walkSpeed, 0f, s);
+            float expRun = (10f - s.etaArrive) / s.runSpeed, expWalk = (10f - s.etaArrive) / s.walkSpeed;
+            Check("motion model: (route - arrive) / v + startup only from a standstill",
+                  Mathf.Abs(standRun - (expRun + s.etaStartup)) < 1e-4f && Mathf.Abs(movingRun - expRun) < 1e-4f &&
+                  Mathf.Abs(standWalk - (expWalk + s.etaStartup)) < 1e-4f,
+                  $"10 m: run standing {standRun:0.000} s, run moving {movingRun:0.000} s, walk standing {standWalk:0.000} s");
+
+            // Same trail as the "near" scorer case: the node the run ETA intercepts is worth less at a walk.
+            var g = Plus(5, 4f, DoorState.None, out _);
+            var r = new RouteService(g, s);
+            var m = new TrackerMemory(s);
+            float[] xs = { -16f, -12f, -8f, -5f }; float[] ts = { 0f, 1.5f, 3f, 4f };
+            for (int i = 0; i < xs.Length; i++) Feed(m, g, r, new Vector3(xs[i], 0f, 0f), ts[i]);
+            VelocityEstimator.TryEstimate(m, 4f, s, out var v, out _);
+            var heat = new HeatMap(); heat.EnsureSize(g.Count);
+            Vector3 self = new(0f, 0f, -8f);
+            var sc = new InterceptScorer();
+            sc.Evaluate(r, m.Last, v, self, g.Nearest(self), 4f, heat, null, s, s.runSpeed);
+            int pick = sc.Best; float advRun = pick >= 0 ? sc.Advantage[pick] : 0f;
+            sc.Evaluate(r, m.Last, v, self, g.Nearest(self), 4f, heat, null, s, s.walkSpeed);
+            float advWalk = pick >= 0 && sc.IsCandidate[pick] ? sc.Advantage[pick] : float.NegativeInfinity;
+            Check("walking Tracker: the run-speed interception node loses its advantage",
+                  pick >= 0 && advRun > 0f && advWalk < advRun,
+                  $"node {(pick >= 0 ? g.Position(pick).ToString() : "-")}: adv run {advRun:0.00}, walk {advWalk:0.00}");
+
+            // The decider scores at the speed of the gait it issues. runToIntercept (adopted): a claimed interception
+            // (adv > 0) is run to and scored at run speed, also in the Walk band where the phase-3 ETA was wrong;
+            // without it the Walk band walks and is scored at walk speed.
+            (string name, float[] x, float[] t, bool runTo, ConfidenceBand band, TrackerGait expect)[] trails =
+            {
+                ("4 sounds", xs, ts, true, ConfidenceBand.Run, TrackerGait.Run),
+                ("2 sounds", new[] { -9f, -5f }, new[] { 2.5f, 4f }, true, ConfidenceBand.Walk, TrackerGait.Run),
+                ("2 sounds, runToIntercept off", new[] { -9f, -5f }, new[] { 2.5f, 4f }, false, ConfidenceBand.Walk, TrackerGait.Walk),
+            };
+            foreach (var (name, tx, tt, runTo, expectBand, expect) in trails)
+            {
+                var sim = new Sim(g, self) { AutoArrive = false };
+                sim.D.Settings.runToIntercept = runTo;
+                for (int i = 0; i < tx.Length; i++)
+                    sim.Percepts.Add(new TrackerPercept(new Vector3(tx[i], 0f, 0f), 0.5f, tt[i], HeardKind.Run));
+                sim.Now = 3.8f; sim.Tick();                        // Analyse
+                var c = sim.Tick();                                 // Intercept: MoveTo
+                var d = sim.D;
+                bool consistent = false; string seen = $"state={d.State} cmd={c.Kind} C={d.Confidence.Value:0.00}";
+                if (c.Kind == TrackerCommandKind.MoveTo && d.HasVelocity && d.GoalNode >= 0)
+                {
+                    var check = new InterceptScorer();
+                    float speed = c.Gait == TrackerGait.Run ? s.runSpeed : s.walkSpeed;
+                    check.Evaluate(d.Routes, d.Memory.Last, d.Velocity, sim.Self, g.Nearest(sim.Self), sim.Now, d.Heat, null, s, speed,
+                                   playerSpeed: d.PlayerSpeed);
+                    consistent = c.Gait == expect && d.Band == expectBand && check.Best == d.GoalNode &&
+                                 Mathf.Abs(check.Advantage[d.GoalNode] - d.Scorer.Advantage[d.GoalNode]) < 1e-4f;
+                    seen = $"gait={c.Gait} band={d.Band} C={d.Confidence.Value:0.00} goal={g.Position(d.GoalNode)} " +
+                           $"adv={d.Scorer.Advantage[d.GoalNode]:0.00}, rescored at {speed} m/s: best={(check.Best >= 0 ? g.Position(check.Best).ToString() : "-")} " +
+                           $"adv={check.Advantage[d.GoalNode]:0.00}";
+                }
+                Check($"decider ({name}): {expectBand} band issues {expect}; goal and advantage are those of that gait", consistent, seen);
+            }
+        }
+
+        /// Time advantage as reward vs constraint on the phase-1 "near" case (the reward picks the side node (0,0,-4)
+        /// beside the junction). Constraint modes must pick a feasible (claimed) node or fall back without a claim;
+        /// ConstraintOnLine's claim must lie on the player's line.
+        static void AdvantageModes()
+        {
+            var g = Plus(5, 4f, DoorState.None, out _);
+            float[] xs = { -16f, -12f, -8f, -5f }; float[] ts = { 0f, 1.5f, 3f, 4f };
+            Vector3 self = new(0f, 0f, -8f);
+            foreach (var mode in new[] { AdvantageMode.Reward, AdvantageMode.Saturated, AdvantageMode.Constraint, AdvantageMode.ConstraintOnLine })
+            {
+                var s = new TrackerSettings { advMode = mode };
+                var r = new RouteService(g, s);
+                var m = new TrackerMemory(s);
+                for (int i = 0; i < xs.Length; i++) Feed(m, g, r, new Vector3(xs[i], 0f, 0f), ts[i]);
+                VelocityEstimator.TryEstimate(m, 4f, s, out var v, out _);
+                var heat = new HeatMap(); heat.EnsureSize(g.Count);
+                var sc = new InterceptScorer();
+                bool has = sc.Evaluate(r, m.Last, v, self, g.Nearest(self), 4f, heat, null, s, s.runSpeed);
+                int b = sc.Best;
+                Vector3 off = b >= 0 ? g.Position(b) - m.Last.Position : Vector3.zero; off.y = 0f;
+                float cos = off.magnitude > 0.5f ? Vector3.Dot(v.normalized, off.normalized) : 0f;
+                bool ok = has && b >= 0 && mode switch
+                {
+                    AdvantageMode.Saturated => sc.Advantage[b] <= s.advCap + 1e-5f,
+                    AdvantageMode.Constraint => sc.Fallback ? !sc.Claimed[b] : sc.Claimed[b] && sc.Advantage[b] > 0f,
+                    AdvantageMode.ConstraintOnLine => sc.Fallback ? !sc.Claimed[b] : sc.Claimed[b] && cos >= s.onLineCos,
+                    _ => sc.Claimed[b] == sc.Advantage[b] > 0f,
+                };
+                Check($"advantage mode {mode}: pick is consistent with the mode", ok,
+                      $"best={(b >= 0 ? g.Position(b).ToString() : "-")} adv={(b >= 0 ? sc.Advantage[b] : 0f):0.00} cos={cos:0.00} " +
+                      $"claimed={(b >= 0 && sc.Claimed[b])} fallback={sc.Fallback} S={sc.BestScore:0.00}");
             }
         }
 

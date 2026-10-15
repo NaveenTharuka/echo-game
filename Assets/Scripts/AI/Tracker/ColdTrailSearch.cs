@@ -18,9 +18,13 @@ namespace Echo.AI.Tracker
         float[] priority = Array.Empty<float>();
 
         ITrackerWorld world; RouteService routes; HeatMap heat; TrackerSettings s;
-        TrackerObservation last; Vector3 dir; float startTime;
+        TrackerObservation last; Vector3 dir; float dirTrust, startTime;
 
         public bool Active { get; private set; }
+        /// The time budget runs from the first arrival, not from Begin: walking a long detour to where the
+        /// trail went cold is not searching.
+        public bool ClockStarted { get; private set; }
+        public float StartTime => startTime;
         public int Visits { get; private set; }
         public int FrontierCount => frontier.Count;
         public bool IsQueued(int n) => queued[n];
@@ -28,26 +32,34 @@ namespace Echo.AI.Tracker
         public float Priority(int n) => priority[n];
 
         public void Begin(RouteService routes, in TrackerObservation last, Vector3 velocity, HeatMap heat,
-                          float now, TrackerSettings settings)
+                          float now, TrackerSettings settings, bool startClock = true)
         {
             this.routes = routes; world = routes.World; this.heat = heat; s = settings; this.last = last;
             int n = world.Count;
             if (queued.Length != n) { queued = new bool[n]; visited = new bool[n]; priority = new float[n]; }
             else { Array.Clear(queued, 0, n); Array.Clear(visited, 0, n); }
             frontier.Clear();
-            Visits = 0; startTime = now; Active = true;
+            Visits = 0; Active = true;
+            ClockStarted = startClock; startTime = startClock ? now : float.PositiveInfinity;
             dir = velocity.sqrMagnitude > 0.01f ? new Vector3(velocity.x, 0f, velocity.z).normalized : Vector3.zero;
+            dirTrust = Mathf.Clamp01(new Vector3(velocity.x, 0f, velocity.z).magnitude / Mathf.Max(0.01f, s.dirSpeedRef));
             if (last.Node >= 0) Enqueue(last.Node, now);
         }
 
         public void Stop() { Active = false; frontier.Clear(); }
+
+        public void StartClock(float now)
+        {
+            if (ClockStarted) return;
+            ClockStarted = true; startTime = now;
+        }
 
         public float H(int node, float now)
         {
             float reach = Mathf.Max(1f, s.maxPlayerSpeed * (now - last.Time));
             Vector3 off = world.Position(node) - last.Position; off.y = 0f;
             float len = off.magnitude;
-            float d = dir != Vector3.zero && len > 0.5f ? Mathf.Max(0f, Vector3.Dot(dir, off / len)) : 0f;
+            float d = dir != Vector3.zero && len > 0.5f ? dirTrust * Mathf.Max(0f, Vector3.Dot(dir, off / len)) : 0f;
             float route = routes.Route(last.Position, last.Node, world.Position(node), node);
             return d + s.searchHeatWeight * heat.Normalised(node) - route / reach;
         }
@@ -63,7 +75,7 @@ namespace Echo.AI.Tracker
         public int Next(float now)
         {
             if (!Active) return -1;
-            if (Visits >= s.searchMaxNodes || now - startTime > s.searchMaxTime || frontier.Count == 0)
+            if (Visits >= s.searchMaxNodes || (ClockStarted && now - startTime > s.searchMaxTime) || frontier.Count == 0)
             { Stop(); return -1; }
 
             int node = frontier.Pop(out _);

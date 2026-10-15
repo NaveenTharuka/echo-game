@@ -57,11 +57,7 @@ namespace Echo.AI.Tracker
         {
             if (r.Emitter != null && r.Emitter.transform.IsChildOf(transform)) return;   // its own noise
 
-            Vector3 ear = transform.position + Vector3.up * earHeight;
-            float d = EffectiveDistance(r.Position, ear);
-            float radius = r.Intensity * MetresPerIntensity * sensitivity;
-            if (radius <= 0f || d >= radius) return;
-            float x = 1f - d / radius, loud = x * x;
+            float loud = Loudness(r.Position, r.Intensity);
             if (loud < threshold) return;
 
             float err = Mathf.Lerp(maxPositionError, minPositionError, loud);
@@ -73,6 +69,18 @@ namespace Echo.AI.Tracker
             if (inbox.Count < 64) inbox.Add(p);
             LastHeard = p; HasLastHeard = true; HeardCount++;
         }
+
+        /// Loudness (0..1) at this agent's ear of a sound of `intensity` at `source` (guide §4.4).
+        public float Loudness(Vector3 source, float intensity)
+        {
+            float d = EffectiveDistance(source, transform.position + Vector3.up * earHeight);
+            float radius = intensity * MetresPerIntensity * sensitivity;
+            if (radius <= 0f || d >= radius) return 0f;
+            float x = 1f - d / radius;
+            return x * x;
+        }
+
+        public bool WouldHear(Vector3 source, float intensity) => Loudness(source, intensity) >= threshold;
 
         float EffectiveDistance(Vector3 source, Vector3 ear)
         {

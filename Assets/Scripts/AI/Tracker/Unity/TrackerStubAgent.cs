@@ -28,6 +28,7 @@ namespace Echo.AI.Tracker
 
         ITrackerMover mover;
         TrackerPerceptionStub ears;
+        UnityEngine.AI.NavMeshAgent nav;
         readonly List<TrackerPercept> percepts = new(64);
         readonly Collider[] overlap = new Collider[16];
         readonly Stopwatch watch = new();
@@ -38,6 +39,7 @@ namespace Echo.AI.Tracker
         {
             mover = GetComponent<ITrackerMover>();
             ears = GetComponent<TrackerPerceptionStub>();
+            nav = GetComponent<UnityEngine.AI.NavMeshAgent>();
         }
 
         void Start()
@@ -61,6 +63,16 @@ namespace Echo.AI.Tracker
             subscribed.Died += OnPlayerDied;
         }
 
+        /// Scripted tests: stop, teleport onto the NavMesh, forget everything. `asHome` also moves Home there.
+        public void ResetAgent(Vector3 position, bool asHome = false)
+        {
+            mover.Stop();
+            nav.Warp(position);
+            if (Decider == null) return;
+            if (asHome) Decider.Home = position;
+            Decider.Reset();
+        }
+
         void OnPlayerDied()
         {
             Decider?.Reset();
@@ -79,7 +91,7 @@ namespace Echo.AI.Tracker
             mover.ConsumeEvents(out bool arrived, out bool failed);
             var input = new TrackerTickInput
             {
-                Now = Time.time, Self = transform.position, Arrived = arrived, Failed = failed
+                Now = Time.time, Self = transform.position, SelfSpeed = nav.velocity.magnitude, Arrived = arrived, Failed = failed
             };
             input.Touched = Touching(out input.TouchPoint);
             var cmd = Decider.Tick(input, percepts);

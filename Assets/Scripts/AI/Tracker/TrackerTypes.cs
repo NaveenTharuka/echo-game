@@ -26,6 +26,18 @@ namespace Echo.AI.Tracker
         }
     }
 
+    /// Player speed behind ETA_player (VelocityEstimator): |shrunk v| (phase 3, biased slow), the unshrunk WLS speed,
+    /// or the speed shrunk towards a moving player's typical speed (velocityPrior) instead of 0.
+    public enum PlayerEtaSpeed { Shrunk, Raw, Moving }
+
+    /// How the time advantage enters the choice of node (InterceptScorer):
+    ///   Reward     S = prox + dir + adv' (phase 3)
+    ///   Saturated  adv' capped at advCap, so a big lead on a node the player reaches late or never stops paying
+    ///   Constraint adv > 0 is required; prox + dir choose among the feasible nodes
+    ///   ConstraintOnLine  adv > 0 and on the player's line (cos >= onLineCos); prox + dir choose
+    /// Constraint modes fall back to prox + dir over all candidates when no node is feasible (follow, no claim).
+    public enum AdvantageMode { Reward, Saturated, Constraint, ConstraintOnLine }
+
     /// Which heard kinds are evidence of where the player is. Copied here on purpose (no dependency
     /// on the Listener's ListenerPriority).
     public static class TrackerSoundFilter
@@ -106,20 +118,54 @@ namespace Echo.AI.Tracker
         [Header("Velocity")]
         public float tau = 8f;
         public float minSpan = 1f;
+        [Tooltip("Prior std of the player's speed (m/s) for the shrinkage of noisy velocity estimates.")]
+        public float velocityPrior = 3f;
+        [Tooltip("Speed (m/s) at which the direction of v is fully trusted; dir terms scale by min(1, |v| / this).")]
+        public float dirSpeedRef = 1f;
 
         [Header("Agent")]
         public float runSpeed = 5f;
         public float walkSpeed = 2.2f;
 
+        [Header("ETA model (TrackerMotion; fitted by ECHO > Tracker > Calibrate Mover, 15 Oct)")]
+        [Tooltip("ETA_tracker at the speed of the gait the Tracker will use (else always runSpeed, the phase-3 model).")]
+        public bool etaFromGait = true;
+        [Tooltip("Run to a scored interception node the Tracker reaches first (adv > 0) whatever the band, and score at run speed.")]
+        public bool runToIntercept = true;    // adopted 15 Oct: catch 64.4 % vs 54.5 % (McNemar +100/-1, z = 9.85).
+                                              // Scoring at the band's gait instead (walk in Walk) lost: 52.7 %, z = -2.41.
+        [Tooltip("Seconds for a standing start (turn in place + accelerate), scaled by 1 - v0/v.")]
+        public float etaStartup = 0.15f;
+        [Tooltip("Metres short of the node at which the mover reports arrival (its arrive radius).")]
+        public float etaArrive = 1f;
+        [Tooltip("runToIntercept runs to a scored goal whose adv is above this (0 = only claimed interceptions; -1 = every scored goal).")]
+        public float runAdvMin = -1f;         // 15 Oct: running only when adv > 0 made the gait hang on adv's sign
+        [Tooltip("Player speed behind ETA_player. Heading and prediction always use the shrunk v.")]
+        public PlayerEtaSpeed playerEtaSpeed = PlayerEtaSpeed.Moving;   // 15 Oct, sweep P4 (z = -1.0 vs P0, n.s.):
+                                              // Unity runner ETA error -2.28 +- 2.36 s (shrunk) -> -0.80 +- 1.23 s
+
         [Header("Score S(n)")]
         public float wProx = 1.2f;
         public float wDir = 1f;
         public float wAdv = 1f;
-        public float wHeat = 0.4f;
+        public float wHeat = 0f;            // 0.4 in the phase-1 design; dropped by the phase 3 sweep (z = 2.89,
+                                            // Bonferroni 2.50). Heat still drives the cold-trail search.
         public float proxSigma = 6f;
         public float advScale = 3f;
         public float reachSlack = 5f;
+        [Tooltip("Lead time from the Tracker's route distance to the predicted point (else straight line).")]
+        public bool routeLead = false;        // rejected by the phase 3 sweep (z = -7.3)
+        [Tooltip("Count a positive interception advantage only in the player's direction: adv * dir.")]
+        public bool gateAdvantage = true;     // adopted by the phase 3 sweep (McNemar z = 5.2)
+        [Tooltip("Time advantage as a reward, a capped reward or a feasibility constraint (see AdvantageMode).")]
+        public AdvantageMode advMode = AdvantageMode.Saturated;   // 15 Oct sweep: vs reward +17/-4, z = 2.84 (Bonferroni 2.39);
+                                              // constraint z = 0.52, constraint + on-line z = 1.83 (n.s.)
+        [Tooltip("Saturated mode: cap on adv' (0.2 = 0.6 s at advScale 3).")]
+        public float advCap = 0.2f;
+        [Tooltip("ConstraintOnLine: min cos(v, n - p_last) for a node to count as on the player's line (0.9 ~ 25 deg).")]
+        public float onLineCos = 0.9f;
         public float heatDecay = 0.995f;
+        [Tooltip("Below this best S(n) the prediction explains nothing: investigate the latest sound instead.")]
+        public float minInterceptScore = 0.5f;
 
         [Header("Confidence")]
         public float freshnessTau = 8f;
