@@ -11,7 +11,7 @@ using L = Echo.AI.Tracker.SandboxTrackerLayout;
 
 namespace Echo.DevTools
 {
-    /// Play Mode scenarios for the Tracker in Sandbox_Tracker (ECHO > Tracker > Run Scenarios). A scripted
+    /// Play Mode scenarios for the Tracker in Sandbox_TrackerGrid (ECHO > Tracker > Run Scenarios). A scripted
     /// "ghost" emits noises through InteractionNoise, so the Tracker hears it exactly like the player; the real
     /// player is frozen and parked in the west room (invulnerable until the death scenario).
     ///   a straight run  - from a listening post 6 m north of the junction, the Tracker reaches an interception
@@ -39,7 +39,10 @@ namespace Echo.DevTools
         Transform ghost;
         Vector3 home;
 
-        readonly List<float> etaErrTracker = new(), etaErrRunner = new();
+        List<float> etaErrTracker = new(), etaErrRunner = new();
+        // Outcome of the last scenario (a) run, for the A/B harness. quiet = no Check/report line per run.
+        bool quiet, lastPass;
+        float lastClosest;
 
         public static void Launch()
         {
@@ -69,6 +72,171 @@ namespace Echo.DevTools
             if (passed == total) Debug.Log(msg); else Debug.LogError(msg);
             Destroy(ghost.gameObject);
             Destroy(gameObject);
+        }
+
+        // ------------------------------------------------------------------ A/B
+        /// One configuration of the settings under test (15 Oct A/B: which ETA / commitment changes help in Unity).
+        struct AbConfig
+        {
+            public string Name; public float Margin; public TrackerAnchor Anchor; public bool PointRoute;
+            public AbConfig(string name, float margin, TrackerAnchor anchor, bool pointRoute)
+            { Name = name; Margin = margin; Anchor = anchor; PointRoute = pointRoute; }
+        }
+
+        /// P3 = phase-3 committed behaviour (no commitment, raw anchor, node + offset routes); C = current.
+        static readonly AbConfig[] CoreConfigs =
+        {
+            new("P3", 0f, TrackerAnchor.Raw, false),
+            new("C", 0.5f, TrackerAnchor.Line, true),
+            new("C-shrunk", 0.5f, TrackerAnchor.ShrunkLine, true),
+            new("C-raw", 0.5f, TrackerAnchor.Raw, true),
+        };
+        static readonly AbConfig[] ToggleConfigs =
+        {
+            new("P3", 0f, TrackerAnchor.Raw, false),
+            new("P3+point", 0f, TrackerAnchor.Raw, true),
+            new("C-node", 0.5f, TrackerAnchor.Line, false),
+            new("C-m0", 0f, TrackerAnchor.Line, true),
+        };
+
+        public static void LaunchAB(int repeats, bool toggles)
+        {
+            var go = new GameObject("_TrackerScenarios");
+            go.AddComponent<TrackerScenarios>().StartCoroutine(go.GetComponent<TrackerScenarios>().RunAB(repeats, toggles ? ToggleConfigs : CoreConfigs));
+        }
+
+        /// Scenario (a) `repeats` times per config, configs interleaved per seed index (seed k: every config once, with
+        /// Random.InitState(1000 + k) before each run, so pairs share the hearing noise as far as frame timing allows).
+        /// Reports pass rate, catch rate (closest approach <= 2 m), ETA errors, McNemar vs the first config, and the
+        /// measured hearing / runner statistics the replay is calibrated against.
+        IEnumerator RunAB(int repeats, AbConfig[] configs)
+        {
+            yield return Setup();
+            if (agent == null) { Destroy(gameObject); yield break; }
+            quiet = true;
+            var s = agent.settings;
+            float m0 = s.switchMargin; var a0 = s.anchor; bool p0 = s.pointRoute;
+            int n = configs.Length;
+            var pass = new bool[n, repeats]; var caught = new bool[n, repeats];
+            var etaT = new List<float>[n]; var etaR = new List<float>[n];
+            for (int c = 0; c < n; c++) { etaT[c] = new List<float>(); etaR[c] = new List<float>(); }
+
+            // Hearing calibration: every ghost noise (true position) and, if the Tracker heard it, its estimate.
+            var ears = agent.GetComponent<TrackerPerceptionStub>();
+            var cal = new HearingCalibration();
+            System.Action<NoiseRecord> onNoise = r =>
+            {
+                if (ghost == null || ears == null || r.Emitter != ghost.gameObject) return;
+                bool heard = ears.HeardCount != cal.LastHeardCount;
+                cal.LastHeardCount = ears.HeardCount;
+                cal.Add(r.Position, r.Time, heard, ears.LastHeard);
+            };
+            InteractionNoise.Emitted += onNoise;
+            if (ears != null) cal.LastHeardCount = ears.HeardCount;
+
+            for (int k = 0; k < repeats; k++)
+            {
+                for (int c = 0; c < n; c++)
+                {
+                    s.switchMargin = configs[c].Margin; s.anchor = configs[c].Anchor; s.pointRoute = configs[c].PointRoute;
+                    etaErrTracker = etaT[c]; etaErrRunner = etaR[c];
+                    Random.InitState(1000 + k);
+                    cal.NewRun();
+                    yield return A_StraightRun();
+                    pass[c, k] = lastPass; caught[c, k] = lastClosest <= 2f;
+                    yield return Between();
+                }
+                Debug.Log($"[TrackerScenarios] A/B seed {k + 1}/{repeats}: " + Row(configs, pass, caught, k + 1));
+            }
+            InteractionNoise.Emitted -= onNoise;
+            s.switchMargin = m0; s.anchor = a0; s.pointRoute = p0;
+            rig.Restore();
+#if UNITY_EDITOR
+            PlayerDeath.Current.SetInvulnerable(false);
+#endif
+            var sb = new StringBuilder($"[TrackerScenarios] A/B scenario (a) x{repeats} per config (seeds paired by index)\n");
+            for (int c = 0; c < n; c++)
+            {
+                int pc = 0, cc = 0; var runs = new StringBuilder();
+                for (int k = 0; k < repeats; k++)
+                {
+                    if (pass[c, k]) pc++;
+                    if (caught[c, k]) cc++;
+                    runs.Append(pass[c, k] ? 'P' : caught[c, k] ? 'c' : '.');
+                }
+                sb.Append($"{configs[c].Name,-9} margin {configs[c].Margin:0.0} anchor {configs[c].Anchor,-10} pointRoute {(configs[c].PointRoute ? "on " : "off")}: " +
+                          $"pass {pc,2}/{repeats}  catch {cc,2}/{repeats}");
+                if (c > 0) sb.Append($"  vs {configs[0].Name}: pass {McNemar(pass, 0, c, repeats)}, catch {McNemar(caught, 0, c, repeats)}");
+                sb.Append($"\n    runs {runs} (P pass, c caught only)  ETA err Tracker {Stats(etaT[c])}; runner {Stats(etaR[c])}\n");
+            }
+            sb.Append(cal.Report());
+            Debug.Log(sb.ToString());
+            Destroy(ghost.gameObject);
+            Destroy(gameObject);
+        }
+
+        static string Row(AbConfig[] configs, bool[,] pass, bool[,] caught, int done)
+        {
+            var sb = new StringBuilder();
+            for (int c = 0; c < configs.Length; c++)
+            {
+                int p = 0, k = 0;
+                for (int i = 0; i < done; i++) { if (pass[c, i]) p++; if (caught[c, i]) k++; }
+                sb.Append($"{configs[c].Name} {p}/{k}  ");
+            }
+            return sb.Append("(pass/catch so far)").ToString();
+        }
+
+        /// Paired McNemar on runs where exactly one of the two configs succeeded: +gained/-lost, z.
+        static string McNemar(bool[,] x, int a, int b, int n)
+        {
+            int gained = 0, lost = 0;
+            for (int k = 0; k < n; k++) { if (x[b, k] && !x[a, k]) gained++; else if (x[a, k] && !x[b, k]) lost++; }
+            float z = gained + lost == 0 ? 0f : (gained - lost) / Mathf.Sqrt(gained + lost);
+            return $"+{gained}/-{lost} z={z:+0.00;-0.00}";
+        }
+
+        /// Measured hearing and runner statistics (what the scratch replay must reproduce).
+        sealed class HearingCalibration
+        {
+            public int LastHeardCount;
+            int emitted, heard;
+            float lastEmitT = -1f, lastHeardT = -1f; Vector3 lastEmitP;
+            readonly List<float> err = new(), radius = new(), along = new(), across = new(), heardGap = new(), speed = new();
+
+            public void NewRun() { lastEmitT = lastHeardT = -1f; }
+
+            public void Add(Vector3 truth, float t, bool wasHeard, TrackerPercept p)
+            {
+                emitted++;
+                if (lastEmitT >= 0f && t > lastEmitT) speed.Add(Vector3.Distance(Flat(truth), Flat(lastEmitP)) / (t - lastEmitT));
+                lastEmitT = t; lastEmitP = truth;
+                if (!wasHeard) return;
+                heard++;
+                Vector3 e = Flat(p.Position) - Flat(truth);
+                err.Add(e.magnitude); radius.Add(p.Error); along.Add(e.x); across.Add(e.z);
+                if (lastHeardT >= 0f) heardGap.Add(t - lastHeardT);
+                lastHeardT = t;
+            }
+
+            static Vector3 Flat(Vector3 v) => new(v.x, 0f, v.z);
+
+            static string M(List<float> xs)
+            {
+                if (xs.Count == 0) return "-";
+                float sum = 0f; foreach (var x in xs) sum += x;
+                float mean = sum / xs.Count, ss = 0f; foreach (var x in xs) ss += (x - mean) * (x - mean);
+                return $"{mean:0.00} (sd {Mathf.Sqrt(ss / Mathf.Max(1, xs.Count - 1)):0.00})";
+            }
+
+            public string Report()
+            {
+                float ratio = 0f; for (int i = 0; i < err.Count; i++) ratio += err[i] / Mathf.Max(0.01f, radius[i]);
+                ratio = err.Count > 0 ? ratio / err.Count : 0f;
+                return $"Hearing calibration: ghost noises {emitted}, heard {heard} ({(emitted > 0 ? 100f * heard / emitted : 0f):0}%); " +
+                       $"ghost speed {M(speed)} m/s; gap between heard sounds {M(heardGap)} s; stated error radius {M(radius)} m; " +
+                       $"actual |error| {M(err)} m (actual/radius {ratio:0.00}, uniform disc = 0.67); error along x {M(along)}, across z {M(across)} m\n";
+            }
         }
 
         static string Stats(List<float> xs)
@@ -104,7 +272,7 @@ namespace Echo.DevTools
             var interactor = FindFirstObjectByType<PlayerInteractor>();
             if (agent == null || door == null || interactor == null || PlayerDeath.Current == null)
             {
-                Debug.LogError("[TrackerScenarios] Needs Sandbox_Tracker in Play Mode (Tracker, Door_South, player).");
+                Debug.LogError("[TrackerScenarios] Needs Sandbox_TrackerGrid in Play Mode (Tracker, Door_South, player).");
                 yield break;
             }
             home = agent.transform.position;
@@ -174,10 +342,13 @@ namespace Echo.DevTools
             var d = agent.Decider;
             var nav = agent.GetComponent<UnityEngine.AI.NavMeshAgent>();
             var arrivals = new List<Arrival>();
+            var ghostAt = new float[d.World.Count];
+            for (int i = 0; i < ghostAt.Length; i++) ghostAt[i] = -1f;
             TrackerState prev = d.State;
             int goal = -1; float goalAdv = 0f, pickedAt = 0f, walk = 0f, stopped = 0f, attack = 0f, predT = 0f, predP = 0f;
             bool scored = false;
             agent.ResetAgent(C(4, 5), true);                  // listening post: interception is feasible from here
+            float closest = float.PositiveInfinity;
             // Every MoveTo the decider issues (printed only if the run fails): why, where, and how close the race was.
             var issues = new StringBuilder();
             int issueCount = d.IssueCount, issueLines = 0;
@@ -213,16 +384,21 @@ namespace Echo.DevTools
                                                Walk = walk, Stopped = stopped, Attack = attack, Scored = scored, PredT = predT, PredP = predP });
                 if (d.State == TrackerState.Hold && prev == TrackerState.Intercept) goal = -1;   // a re-issue after Hold is a new pick
                 prev = d.State;
+                // The runner's first contact (within 1.5 m) with EVERY node, recorded whether or not the Tracker has
+                // arrived there yet. (Before 15 Oct it was only looked for after the Tracker's arrival, so a runner that
+                // had already passed read "never" or was stamped with the Tracker's own time - the -0.82 s ETA error.)
                 Vector3 gp = Feet(ghost);
-                for (int i = 0; i < arrivals.Count; i++)
-                    if (arrivals[i].Ghost < 0f && Vector3.Distance(gp, d.World.Position(arrivals[i].Node)) <= 1.5f)
-                    { var a = arrivals[i]; a.Ghost = Time.time; arrivals[i] = a; }
+                closest = Mathf.Min(closest, Vector3.Distance(gp, Feet(agent.transform)));
+                for (int i = 0; i < ghostAt.Length; i++)
+                    if (ghostAt[i] < 0f && Vector3.Distance(gp, d.World.Position(i)) <= 1.5f) ghostAt[i] = Time.time;
                 return false;
             };
             yield return Run(C(0, 4), C(8, 4), true, watch);
             float until = Time.time + 2f;
             while (Time.time < until) { watch(); yield return null; }
 
+            for (int i = 0; i < arrivals.Count; i++) { var x = arrivals[i]; x.Ghost = ghostAt[x.Node]; arrivals[i] = x; }
+            // Pass = the runner's first contact with the node comes after the Tracker's arrival (unchanged rule).
             int hit = arrivals.FindIndex(x => x.Ghost > x.Tracker);
             var sb = new StringBuilder();
             foreach (var x in arrivals)
@@ -230,12 +406,15 @@ namespace Echo.DevTools
                 sb.Append($"node {x.Node} at {d.World.Position(x.Node)}{(x.Scored ? "" : " [latest sound, not scored]")}: " +
                           $"Tracker t={x.Tracker:0.0} ghost t={(x.Ghost < 0 ? "never" : x.Ghost.ToString("0.0"))} adv={x.Adv:0.00} " +
                           $"(picked t={x.Picked:0.0}; Tracker ETA {x.PredT:0.0} s took {x.Tracker - x.Picked:0.0} s; ");
-                if (x.Ghost >= 0f) sb.Append($"runner ETA {x.PredP:0.0} s took {x.Ghost - x.Picked:0.0} s; ");
+                if (x.Ghost >= x.Picked) sb.Append($"runner ETA {x.PredP:0.0} s took {x.Ghost - x.Picked:0.0} s; ");
+                else if (x.Ghost >= 0f) sb.Append("runner passed it before the pick; ");
                 sb.Append($"walked {x.Walk:0.0} s, stopped {x.Stopped:0.0} s, attack {x.Attack:0.0} s); ");
-                if (x.Scored && x.Ghost >= 0f && x.Attack == 0f)
+                if (x.Scored && x.Ghost >= x.Picked && x.Attack == 0f)
                 { etaErrTracker.Add(x.Tracker - x.Picked - x.PredT); etaErrRunner.Add(x.Ghost - x.Picked - x.PredP); }
             }
             bool pass = hit >= 0 && arrivals[hit].Adv > 0f;
+            lastPass = pass; lastClosest = closest;
+            if (quiet) yield break;
             if (!pass) sb.Append($"\n  MoveTo log ({issueLines}):{issues}");
             Check("a straight run: Tracker reaches an interception node before the runner (adv > 0)",
                   pass, arrivals.Count == 0 ? $"no interception arrival; state={d.State} heard={d.Accepted}{(pass ? "" : sb.ToString())}" : sb.ToString());

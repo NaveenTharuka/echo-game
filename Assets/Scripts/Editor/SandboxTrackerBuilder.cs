@@ -123,6 +123,27 @@ namespace Echo.EditorTools
         [MenuItem("ECHO/Tracker/Run Scenario A x10", true)]
         static bool CanRunScenarioA() => EditorApplication.isPlaying;
 
+        /// A/B of scenario (a): P3, C, C-shrunk, C-raw, 20 paired runs each (~30 min).
+        [MenuItem("ECHO/Tracker/A-B Scenario A x20 (core configs)")]
+        static void RunAbCore() => RunAb(false);
+
+        [MenuItem("ECHO/Tracker/A-B Scenario A x20 (core configs)", true)]
+        static bool CanRunAbCore() => EditorApplication.isPlaying;
+
+        /// A/B of scenario (a): P3, P3+point, C-node, C-m0, 20 paired runs each (~30 min).
+        [MenuItem("ECHO/Tracker/A-B Scenario A x20 (toggles)")]
+        static void RunAbToggles() => RunAb(true);
+
+        [MenuItem("ECHO/Tracker/A-B Scenario A x20 (toggles)", true)]
+        static bool CanRunAbToggles() => EditorApplication.isPlaying;
+
+        static void RunAb(bool toggles)
+        {
+            if (EditorSceneManager.GetActiveScene().path != ScenePath)
+            { Debug.LogError($"[TrackerScenarios] Open {ScenePath} and enter Play Mode first."); return; }
+            Echo.DevTools.TrackerScenarios.LaunchAB(20, toggles);
+        }
+
         /// Times the real mover over straight and cornered routes and fits the ETA model (~3 min).
         [MenuItem("ECHO/Tracker/Calibrate Mover")]
         static void CalibrateMover()
