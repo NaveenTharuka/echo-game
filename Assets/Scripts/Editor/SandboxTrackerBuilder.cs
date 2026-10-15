@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Echo.AI.Tracker;
 using Echo.Navigation;
 using Echo.UI;
@@ -7,6 +6,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.AI;
+using static Echo.AI.Tracker.SandboxTrackerLayout;
 
 namespace Echo.EditorTools
 {
@@ -22,28 +22,7 @@ namespace Echo.EditorTools
         public const string ScenePath = "Assets/Scenes/Sandbox/Sandbox_Tracker.unity";
         const string NavMeshFolder = "Assets/Scenes/Sandbox/Sandbox_Tracker";
         const string NavMeshPath = NavMeshFolder + "/NavMesh-TrackerArea.asset";
-        const float Cell = 6f, WallHeight = 4f;
-
-        // Row strings from z = 8 (top) to z = 0; '.' open, '#' solid.
-        static readonly string[] Map =
-        {
-            "###...###",   // 8  north room (Tracker home)
-            "###...###",   // 7
-            "####.####",   // 6  north corridor
-            "..##.##..",   // 5  west room / east room
-            ".........",   // 4  main corridor through the junction (4,4)
-            "..##.##..",   // 3
-            "####.###.",   // 2  south arm (door between z 3 and 2) / loop
-            "###...##.",   // 1  south room / loop
-            "###......",   // 0  south room + loop corridor
-        };
-        static readonly Vector2Int DoorA = new(4, 3), DoorB = new(4, 2);
-        static readonly Vector2Int SpawnCell = new(0, 4), HomeCell = new(4, 7);
-
-        static int W => Map[0].Length;
-        static int H => Map.Length;
-        static bool Open(int x, int z) => x >= 0 && z >= 0 && x < W && z < H && Map[H - 1 - z][x] == '.';
-        static Vector3 Centre(int x, int z) => new((x + 0.5f) * Cell, 0f, (z + 0.5f) * Cell);
+        const float WallHeight = 4f;
 
         [MenuItem("ECHO/Tracker/Build Sandbox_Tracker")]
         static void Build()
@@ -96,19 +75,8 @@ namespace Echo.EditorTools
             var graphGo = new GameObject("WaypointGraph");
             graphGo.transform.SetParent(area.transform, false);
             var graph = graphGo.AddComponent<SandboxTrackerGraph>();
-            var index = new Dictionary<Vector2Int, int>();
-            for (int z = 0; z < H; z++)
-            for (int x = 0; x < W; x++)
-                if (Open(x, z)) { index[new Vector2Int(x, z)] = graph.nodes.Count; graph.nodes.Add(Centre(x, z)); }
-            foreach (var kv in index)
-            {
-                foreach (var step in new[] { Vector2Int.right, Vector2Int.up })
-                {
-                    if (!index.TryGetValue(kv.Key + step, out int other)) continue;
-                    bool isDoor = (kv.Key == DoorB && kv.Key + step == DoorA) || (kv.Key == DoorA && kv.Key + step == DoorB);
-                    graph.links.Add(new SandboxTrackerGraph.Link { a = kv.Value, b = other, door = isDoor ? door : null });
-                }
-            }
+            Nodes(p => graph.nodes.Add(p),
+                  (a, b, isDoor) => graph.links.Add(new SandboxTrackerGraph.Link { a = a, b = b, door = isDoor ? door : null }));
 
             // Player at the west room, facing east.
             if (player != null)
@@ -130,6 +98,42 @@ namespace Echo.EditorTools
                       $"door {(door != null ? "placed" : "MISSING")}. NavMesh path spawn->home: {pathSpawn}; through the door: {pathDoor}. " +
                       $"Player kept: {player != null}.");
         }
+
+        /// Play Mode scenarios (a-e) in Sandbox_Tracker; one report in the console when done (~2 min).
+        [MenuItem("ECHO/Tracker/Run Scenarios")]
+        static void RunScenarios()
+        {
+            if (EditorSceneManager.GetActiveScene().path != ScenePath)
+            { Debug.LogError($"[TrackerScenarios] Open {ScenePath} and enter Play Mode first."); return; }
+            Echo.DevTools.TrackerScenarios.Launch();
+        }
+
+        [MenuItem("ECHO/Tracker/Run Scenarios", true)]
+        static bool CanRunScenarios() => EditorApplication.isPlaying;
+
+        /// Scenario (a) only, ten times: pass rate + ETA errors (Tracker and runner) at the pick (~4 min).
+        [MenuItem("ECHO/Tracker/Run Scenario A x10")]
+        static void RunScenarioA()
+        {
+            if (EditorSceneManager.GetActiveScene().path != ScenePath)
+            { Debug.LogError($"[TrackerScenarios] Open {ScenePath} and enter Play Mode first."); return; }
+            Echo.DevTools.TrackerScenarios.LaunchA(10);
+        }
+
+        [MenuItem("ECHO/Tracker/Run Scenario A x10", true)]
+        static bool CanRunScenarioA() => EditorApplication.isPlaying;
+
+        /// Times the real mover over straight and cornered routes and fits the ETA model (~3 min).
+        [MenuItem("ECHO/Tracker/Calibrate Mover")]
+        static void CalibrateMover()
+        {
+            if (EditorSceneManager.GetActiveScene().path != ScenePath)
+            { Debug.LogError($"[TrackerMoverCalibration] Open {ScenePath} and enter Play Mode first."); return; }
+            Echo.DevTools.TrackerMoverCalibration.Launch();
+        }
+
+        [MenuItem("ECHO/Tracker/Calibrate Mover", true)]
+        static bool CanCalibrateMover() => EditorApplication.isPlaying;
 
         static bool TouchesOpen(int x, int z)
         {
