@@ -27,8 +27,10 @@ namespace Echo.DevTools
 
         public static void Launch()
         {
-            var go = new GameObject("_TrackerMoverCalibration");
-            go.AddComponent<TrackerMoverCalibration>().StartCoroutine(go.GetComponent<TrackerMoverCalibration>().RunAll());
+            if (TrackerScenarios.RefuseIfBusy("mover calibration")) return;
+            var run = new GameObject("_TrackerMoverCalibration").AddComponent<TrackerMoverCalibration>();
+            TrackerScenarios.Claim(run, "mover calibration");
+            run.StartCoroutine(run.RunAll());
         }
 
         static Vector3 C(int x, int z) => L.Centre(x, z);

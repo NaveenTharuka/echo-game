@@ -44,17 +44,46 @@ namespace Echo.DevTools
         bool quiet, lastPass;
         float lastClosest;
 
+        // ------------------------------------------------------------------ one run at a time
+        // Overlapping runs drive the same Tracker, ghost and player rig and corrupt each other's results (15 Oct:
+        // three A x10 batches started seconds apart gave 1/10, 0/10, 4/10; a clean run gives 7/10). A destroyed run
+        // compares equal to null (Unity object), so a finished or aborted run frees the slot by itself.
+        static MonoBehaviour activeRun;
+        static string activeLabel;
+        static float activeSince;
+
+        /// True (and logs why) if a scenario, A/B or calibration run is still in progress.
+        public static bool RefuseIfBusy(string requested)
+        {
+            if (activeRun == null) return false;
+            Debug.LogError($"[TrackerScenarios] Not starting {requested}: {activeLabel} is still running " +
+                           $"(started {Time.time - activeSince:0} s ago). Wait for its report or exit Play Mode.");
+            return true;
+        }
+
+        public static void Claim(MonoBehaviour run, string label)
+        {
+            activeRun = run; activeLabel = label; activeSince = Time.time;
+            Debug.Log($"[TrackerScenarios] Started {label}.");
+        }
+
         public static void Launch()
         {
+            if (RefuseIfBusy("scenarios a-e")) return;
             var go = new GameObject("_TrackerScenarios");
             DontDestroyOnLoad(go);
-            go.AddComponent<TrackerScenarios>().StartCoroutine(go.GetComponent<TrackerScenarios>().RunAll());
+            var run = go.AddComponent<TrackerScenarios>();
+            Claim(run, "scenarios a-e");
+            run.StartCoroutine(run.RunAll());
         }
 
         public static void LaunchA(int repeats)
         {
-            var go = new GameObject("_TrackerScenarios");
-            go.AddComponent<TrackerScenarios>().StartCoroutine(go.GetComponent<TrackerScenarios>().RunA(repeats));
+            string label = $"scenario (a) x{repeats}";
+            if (RefuseIfBusy(label)) return;
+            var run = new GameObject("_TrackerScenarios").AddComponent<TrackerScenarios>();
+            Claim(run, label);
+            run.StartCoroutine(run.RunA(repeats));
         }
 
         IEnumerator RunA(int repeats)
@@ -101,8 +130,11 @@ namespace Echo.DevTools
 
         public static void LaunchAB(int repeats, bool toggles)
         {
-            var go = new GameObject("_TrackerScenarios");
-            go.AddComponent<TrackerScenarios>().StartCoroutine(go.GetComponent<TrackerScenarios>().RunAB(repeats, toggles ? ToggleConfigs : CoreConfigs));
+            string label = $"A/B scenario (a) x{repeats} ({(toggles ? "toggles" : "core configs")})";
+            if (RefuseIfBusy(label)) return;
+            var run = new GameObject("_TrackerScenarios").AddComponent<TrackerScenarios>();
+            Claim(run, label);
+            run.StartCoroutine(run.RunAB(repeats, toggles ? ToggleConfigs : CoreConfigs));
         }
 
         /// Scenario (a) `repeats` times per config, configs interleaved per seed index (seed k: every config once, with
