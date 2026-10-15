@@ -18,18 +18,18 @@ namespace Echo.AI.Tracker
     ///   rawSpeed    = |unshrunk WLS velocity|, capped (unbiased, noisy)
     ///   movingSpeed = (rawSpeed * den + lambda * velocityPrior) / (den + lambda): the same shrinkage, but towards a
     ///                 moving player's typical speed instead of 0 - a player making step noise is not standing still.
-    /// anchor = pBar + v * (t_last - t_bar): the fitted line at the latest sound's time. The raw latest percept carries
-    /// its full error (up to 6 m); anchoring the prediction on it moved every candidate's score by ~1 per tick and made
-    /// the goal flip between neighbours (15 Oct replay, 40 seeds: A-B-A flips 8 -> 2 from the anchor alone).
+    /// Anchors (the trail position at the latest sound's time, per TrackerAnchor):
+    ///   anchorLine   = pBar + v_raw * (t_last - t_bar)    unshrunk line: unbiased, but noisy with few sounds
+    ///   anchorShrunk = pBar + v * (t_last - t_bar)        shrunk line: stable, but lags a moving runner
     public static class VelocityEstimator
     {
         public static bool TryEstimate(TrackerMemory m, float now, TrackerSettings s, out Vector3 v, out float rms) =>
-            TryEstimate(m, now, s, out v, out rms, out _, out _, out _);
+            TryEstimate(m, now, s, out v, out rms, out _, out _, out _, out _);
 
         public static bool TryEstimate(TrackerMemory m, float now, TrackerSettings s, out Vector3 v, out float rms,
-                                       out float rawSpeed, out float movingSpeed, out Vector3 anchor)
+                                       out float rawSpeed, out float movingSpeed, out Vector3 anchorLine, out Vector3 anchorShrunk)
         {
-            v = Vector3.zero; rms = 0f; rawSpeed = movingSpeed = 0f; anchor = default;
+            v = Vector3.zero; rms = 0f; rawSpeed = movingSpeed = 0f; anchorLine = anchorShrunk = default;
             int n = m.Count;
             if (n < 2 || m.Last.Time - m[0].Time < s.minSpan) return false;
 
@@ -65,7 +65,8 @@ namespace Echo.AI.Tracker
                 sr += Weight(o, now, s) * r.sqrMagnitude;
             }
             rms = Mathf.Sqrt(sr / sw);
-            anchor = pBar + v * (m.Last.Time - tBar);
+            anchorLine = pBar + Vector3.ClampMagnitude(num / den, s.maxPlayerSpeed) * (m.Last.Time - tBar);
+            anchorShrunk = pBar + v * (m.Last.Time - tBar);
             return true;
         }
 

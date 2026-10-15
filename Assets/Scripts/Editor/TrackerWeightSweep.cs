@@ -9,7 +9,7 @@ namespace Echo.EditorTools
     /// ECHO > Tracker > Run Weight Sweep. Closed-loop simulation of the full TrackerDecider against a scripted
     /// runner, to compare scoring variants and weight sets with data.
     ///
-    /// World: the Sandbox_Tracker layout and a 10 x 10 lattice (6 m, random spanning tree + 40% extra links = loops).
+    /// World: the Sandbox_TrackerGrid layout and a 10 x 10 lattice (6 m, random spanning tree + 40% extra links = loops).
     /// Runner: random start/goal (route >= 36 m), 2.5-4.5 m/s, one gunshot at t = 0 then a noisy step every 0.5 s.
     /// Hearing (guide §4.4-4.5): effective distance = graph route; R = intensity x 45 m; loudness (1 - d/R)^2 >= 0.03;
     /// error = lerp(6, 0.5, loudness); estimate = true position + uniform offset within the error.
@@ -34,15 +34,16 @@ namespace Echo.EditorTools
             public float RunAdvMin;
             public AdvantageMode AdvMode;
             public float Prox, Dir, Adv, Heat;
-            /// Goal commitment; null = shipped settings (switchMargin, fitAnchor).
+            /// Goal commitment / route model; null = shipped settings (switchMargin, anchor, pointRoute).
             public float? SwitchMargin;
-            public bool? FitAnchor;
+            public bool? PointRoute;
+            public TrackerAnchor? Anchor;
             public Config(string name, bool routeLead, bool gate, float prox, float dir, float adv, float heat,
                           bool etaGait = true, bool runToIntercept = false, PlayerEtaSpeed playerSpeed = PlayerEtaSpeed.Shrunk)
             {
                 Name = name; RouteLead = routeLead; Gate = gate; Prox = prox; Dir = dir; Adv = adv; Heat = heat;
                 EtaGait = etaGait; RunToIntercept = runToIntercept; PlayerSpeed = playerSpeed; RunAdvMin = 0f; AdvMode = AdvantageMode.Reward;
-                SwitchMargin = null; FitAnchor = null;
+                SwitchMargin = null; Anchor = null; PointRoute = null;
             }
             public Config With(string name, PlayerEtaSpeed playerSpeed, float runAdvMin = 0f) =>
                 new(name, RouteLead, Gate, Prox, Dir, Adv, Heat, EtaGait, RunToIntercept, playerSpeed) { RunAdvMin = runAdvMin };
@@ -94,8 +95,8 @@ namespace Echo.EditorTools
         ///   A3 adv > 0 and on the line (cos >= 0.9) required, prox + dir choose
         static Config[] AdvModes(Config v)
         {
-            var modes = new[] { (AdvantageMode.Reward, "A0 adv as reward (current)"), (AdvantageMode.Constraint, "A1 adv > 0 constraint"),
-                                (AdvantageMode.Saturated, "A2 adv capped at 0.2"), (AdvantageMode.ConstraintOnLine, "A3 adv > 0 + on-line constraint") };
+            var modes = new[] { (AdvantageMode.Reward, "A0 adv as reward"), (AdvantageMode.Constraint, "A1 adv > 0 constraint"),
+                                (AdvantageMode.Saturated, "A2 adv capped at 0.2 (shipped)"), (AdvantageMode.ConstraintOnLine, "A3 adv > 0 + on-line constraint") };
             var w = new TrackerSettings();       // on the shipped weights (heat 0), not the variant stage's phase-1 weights
             var list = new Config[modes.Length];
             for (int i = 0; i < modes.Length; i++)
@@ -125,17 +126,19 @@ namespace Echo.EditorTools
             new Config("W3 dir-heavy 1.0/1.6/1.0/0.4",   routeLead, gate, 1.0f, 1.6f, 1.0f, 0.4f, eta.EtaGait, eta.RunToIntercept, eta.PlayerSpeed) { RunAdvMin = eta.RunAdvMin, AdvMode = eta.AdvMode },
         };
 
-        /// Goal commitment (15 Oct, re-planning loop in scenario a): the shipped rule (keep the goal unless beaten by
-        /// switchMargin, fitted anchor) against the phase-3 rule and each half. Must not cost catches.
+        /// Goal commitment and the player-route model (15 Oct). Reference = shipped: point routes, fitted-line anchor,
+        /// switchMargin 0.5. K1 drops commitment, K2/K3 anchor on the raw latest percept, K4 = node + offset routes
+        /// (the phase 1-3 model: over-counts by twice the along-edge offset, ETA_player ~0.7 s slow on a straight run).
         static Config[] Commitment(Config w)
         {
             var shipped = new TrackerSettings();
-            var list = new Config[4];
+            var list = new Config[5];
             for (int i = 0; i < list.Length; i++) list[i] = w;
-            list[0].Name = $"K0 margin {shipped.switchMargin} + fitted anchor (current)";
-            list[1].Name = "K1 phase-3 rule (no commitment, raw anchor)"; list[1].SwitchMargin = 0f; list[1].FitAnchor = false;
-            list[2].Name = $"K2 margin {shipped.switchMargin}, raw anchor"; list[2].FitAnchor = false;
-            list[3].Name = "K3 fitted anchor, no margin"; list[3].SwitchMargin = 0f;
+            list[0].Name = $"K0 point routes, line anchor, margin {shipped.switchMargin}";
+            list[1].Name = "K1 K0 without commitment";             list[1].SwitchMargin = 0f;
+            list[2].Name = "K2 K0 with raw-percept anchor";        list[2].Anchor = TrackerAnchor.Raw;
+            list[3].Name = "K3 raw anchor, no commitment";         list[3].Anchor = TrackerAnchor.Raw; list[3].SwitchMargin = 0f;
+            list[4].Name = "K4 node + offset routes (phase 3)";    list[4].PointRoute = false;
             return list;
         }
 
@@ -182,9 +185,14 @@ namespace Echo.EditorTools
             log($"Adopted advantage mode: {a.Name}");
             var w = Pick(WeightSets(v.RouteLead, v.Gate, a), worlds, log);
             log($"Adopted weight set: {w.Name}");
-            var k = Pick(Commitment(w), worlds, log);
-            log($"Adopted goal commitment: {k.Name}");
-            return k;
+            var ks = Commitment(w);
+            log($"Best commitment / route model by catch rate: {Pick(ks, worlds, log).Name}");
+            // Shipped: K0 (decision 15 Oct). Node + offset routes win catches here only through a hidden pessimism
+            // (ETA_player ~0.7 s slow, nodes the runner can reach dropped from the candidates) that suits this
+            // catch-anywhere metric with a turning runner, but loses the straight-run interception race (scenario a
+            // replay: 21/40 vs 34/40). Same reasoning as P4 over P3: ship the unbiased model.
+            log($"Shipped commitment / route model: {ks[0].Name}");
+            return ks[0];
         }
 
         static Config Pick(Config[] configs, (string, TrackerGraph)[] worlds, Action<string> log)
@@ -248,7 +256,8 @@ namespace Echo.EditorTools
                 playerEtaSpeed = c.PlayerSpeed, runAdvMin = c.RunAdvMin, advMode = c.AdvMode
             };
             if (c.SwitchMargin.HasValue) s.switchMargin = c.SwitchMargin.Value;
-            if (c.FitAnchor.HasValue) s.fitAnchor = c.FitAnchor.Value;
+            if (c.Anchor.HasValue) s.anchor = c.Anchor.Value;
+            if (c.PointRoute.HasValue) s.pointRoute = c.PointRoute.Value;
             var routes = new RouteService(g, s);
 
             // Runner route (>= 36 m) and Tracker start (15-35 m by route from the runner).

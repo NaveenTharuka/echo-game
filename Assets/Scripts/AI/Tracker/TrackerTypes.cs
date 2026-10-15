@@ -5,6 +5,9 @@ namespace Echo.AI.Tracker
 {
     /// Mirrors Echo.Sound.SoundType (guide §4.1, frozen). Names must match exactly: the Hearing
     /// adapter maps by name, so the Tracker core never depends on the sound core.
+    /// Trail point the scorer starts from (TrackerSettings.anchor; see VelocityEstimator).
+    public enum TrackerAnchor { Raw, ShrunkLine, Line }
+
     public enum HeardKind
     {
         Footstep, Run, Jump, Land, Gunshot, Reload, BulletImpact, Door, MetalImpact,
@@ -180,11 +183,15 @@ namespace Echo.AI.Tracker
         [Tooltip("Commitment: keep the current scored goal unless the new best beats its CURRENT score by this much " +
                  "(or it stops being a candidate, loses its interception claim, or a door changes). 0 = phase-3 rule " +
                  "(switch on any > replanDistance move).")]
-        public float switchMargin = 0.5f;           // 15 Oct replay, 40 seeds x 2 layouts: 0.25 / 0.5 / 1.0 all remove A-B-A flips in a2;
-                                                    // 0.5 = fewest flips in the far-home layout without the 1.0 loss of interceptions
-        [Tooltip("Anchor the prediction and candidate reach on the fitted trail position at the latest sound's time " +
-                 "instead of the raw latest percept (which carries its full error).")]
-        public bool fitAnchor = true;
+        public float switchMargin = 0.5f;
+        [Tooltip("Trail point the prediction, reach and ETA_player start from: the raw latest percept (full error), the " +
+                 "shrunk fitted line or the unshrunk fitted line at the latest sound's time. Unity A/B 15 Oct, scenario (a) " +
+                 "x20 paired, margin 0.5 + pointRoute: Line 15/20, Raw 16/20 (3 vs 4 discordant, neutral), ShrunkLine " +
+                 "10/20 (worse). Line kept: neutral in Unity and it removes the goal flips (core check 19 -> 0; Raw 19 -> 5).")]
+        public TrackerAnchor anchor = TrackerAnchor.Line;
+        [Tooltip("route(p_last, n) from the point itself (seeded at its node and neighbours) instead of " +
+                 "|p - node| + route(node, n), which over-counts when the player is past its node (ETA_player too slow).")]
+        public bool pointRoute = true;
         public float holdTime = 4f;
         public float attackTime = 1.8f;
         public float strikeDistance = 2.2f;

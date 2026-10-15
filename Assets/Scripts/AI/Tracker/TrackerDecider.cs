@@ -48,7 +48,7 @@ namespace Echo.AI.Tracker
     /// current goal stops being a candidate, or a node > replanDistance away beats the current goal's CURRENT score
     /// by switchMargin (commitment: near-equal candidates no longer flip the goal on perception noise), or a goal
     /// picked as an interception loses its claim (the player got there first). A band or gait change re-issues the
-    /// same goal at the new gait. Scoring is anchored on the fitted trail (fitAnchor), not the raw latest percept.
+    /// same goal at the new gait. Scoring starts from the trail point chosen by settings.anchor.
     public sealed class TrackerDecider
     {
         public readonly TrackerSettings Settings;
@@ -61,7 +61,7 @@ namespace Echo.AI.Tracker
 
         public TrackerState State { get; private set; } = TrackerState.Idle;
         public TrackerReplan LastReplan { get; private set; }
-        /// The trail point the last evaluation scored from: the latest sound, at the fitted position if fitAnchor.
+        /// The trail point the last evaluation scored from: the latest sound, moved to the fitted line unless anchor = Raw.
         public TrackerObservation Anchor { get; private set; }
         /// Interception MoveTos issued since the last Reset.
         public int IssueCount { get; private set; }
@@ -280,7 +280,7 @@ namespace Echo.AI.Tracker
             if (!Memory.HasLast) { HasVelocity = false; Confidence = default; return false; }
             var last = Memory.Last;
 
-            HasVelocity = VelocityEstimator.TryEstimate(Memory, now, s, out var v, out rms, out float raw, out float moving, out var anchor);
+            HasVelocity = VelocityEstimator.TryEstimate(Memory, now, s, out var v, out rms, out float raw, out float moving, out var anchorLine, out var anchorShrunk);
             Velocity = HasVelocity ? v : Vector3.zero;
             PlayerSpeed = !HasVelocity ? 0f : s.playerEtaSpeed switch
             {
@@ -289,8 +289,9 @@ namespace Echo.AI.Tracker
             float margin = 0f;
             bool has = false;
             interceptGoal = runGoal = scoredPick = false;
-            if (HasVelocity && s.fitAnchor)
+            if (HasVelocity && s.anchor != TrackerAnchor.Raw)
             {
+                var anchor = s.anchor == TrackerAnchor.Line ? anchorLine : anchorShrunk;
                 last.Position = new Vector3(anchor.x, last.Position.y, anchor.z);
                 last.Node = World.Nearest(last.Position);
             }
@@ -328,6 +329,7 @@ namespace Echo.AI.Tracker
             if (!goalScored || !scoredPick || GoalNode < 0 || GoalNode >= Scorer.IsCandidate.Length) return false;
             if (!Scorer.IsCandidate[GoalNode] || banned[GoalNode]) return false;      // infeasible now
             if (goalClaimed && !Scorer.Claimed[GoalNode]) return false;              // interception lost (player passed it)
+            if (!goalClaimed && Scorer.Claimed[Scorer.Best]) return false;           // a real interception beats a follow target
             if (Vector3.Distance(target, Goal) <= s.replanDistance) return true;      // same place, as before
             return Scorer.BestScore < Scorer.Scores[GoalNode] + s.switchMargin;      // not clearly better
         }

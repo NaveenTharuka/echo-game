@@ -130,7 +130,7 @@ namespace Echo.EditorTools
             // raw = the data, moving = between the data and the 3 m/s prior.
             m.Clear();
             for (int i = 0; i < 3; i++) Feed(m, g, r, new Vector3(10f + 2.25f * i, 0f, 0f), i * 0.5f, 4f);
-            VelocityEstimator.TryEstimate(m, 1f, s, out v, out _, out float raw, out float moving, out _);
+            VelocityEstimator.TryEstimate(m, 1f, s, out v, out _, out float raw, out float moving, out _, out _);
             Check("noisy short trail: v shrunk; ETA_player speeds raw = 4.5, moving between prior 3 and 4.5",
                   v.magnitude < 2f && Mathf.Abs(raw - 4.5f) < 0.05f && moving > s.velocityPrior && moving < raw,
                   $"|v|={v.magnitude:0.00} raw={raw:0.00} moving={moving:0.00}");
@@ -478,13 +478,13 @@ namespace Echo.EditorTools
                   $"state={sim.D.State} mem={sim.D.Memory.Count} cmd={c.Kind}");
         }
 
-        /// Re-planning loop (15 Oct, scenario a in Unity): a runner crosses the Sandbox_Tracker corridor, heard every
+        /// Re-planning loop (15 Oct, scenario a in Unity): a runner crosses the Sandbox_TrackerGrid corridor, heard every
         /// 0.5 s with 3-5 m error. Under the phase-3 rule (switch on any > replanDistance move, raw latest percept as the
         /// anchor) the goal flips back and forth between neighbouring nodes (A -> B -> A). Commitment + fitted anchor
         /// must remove most of those flips and still bring the Tracker as close to the runner (straight-line mover).
         static void GoalCommitment()
         {
-            var old = new TrackerSettings { switchMargin = 0f, fitAnchor = false };
+            var old = new TrackerSettings { switchMargin = 0f, anchor = TrackerAnchor.Raw, pointRoute = false };
             RunCommitment(old, out int oldFlips, out int oldMoves, out float oldNear);
             RunCommitment(new TrackerSettings(), out int flips, out int moves, out float near);
             string seen = $"20 runs; phase-3 rule: {oldFlips} A-B-A flips, {oldMoves} MoveTos, mean closest approach {oldNear:0.0} m; " +

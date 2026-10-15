@@ -87,9 +87,10 @@ namespace Echo.AI.Tracker
             // Constraint modes keep two pools: feasible nodes (used if any) and all candidates (the fallback).
             int fBest = -1, fSecond = -1, fCount = 0; float fBestScore = float.NegativeInfinity, fSecondScore = float.NegativeInfinity;
 
-            var fromLast = routes.Field(last.Node).Dist;
+            // Player routes from the point itself (pointRoute) or from its nearest node + offset (phase 1-3).
+            var fromLast = s.pointRoute ? routes.FieldFrom(last.Position, last.Node).Dist : routes.Field(last.Node).Dist;
             var fromSelf = routes.Field(selfNode).Dist;
-            float lastOffset = Vector3.Distance(last.Position, w.Position(last.Node));
+            float lastOffset = s.pointRoute ? 0f : Vector3.Distance(last.Position, w.Position(last.Node));
             float selfOffset = selfNode >= 0 ? Vector3.Distance(self, w.Position(selfNode)) : 0f;
 
             float age = Mathf.Max(0f, now - last.Time);
