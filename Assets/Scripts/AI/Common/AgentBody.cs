@@ -1,0 +1,89 @@
+using System.Collections;
+using Echo.Player;
+using Echo.Sound;
+using UnityEngine;
+
+namespace Echo.AI
+{
+    /// Health, attack and death of an agent (guide §8.4). Implements IDamageable so HitscanWeapon can hurt it.
+    /// The attack is decided by the brain from sound/touch; whatever is in front of the claws when the swing lands
+    /// gets hit (physics, not perception). The player has one-hit death (PlayerDeath.Kill); anything else
+    /// damageable takes attackDamage.
+    public class AgentBody : MonoBehaviour, IDamageable
+    {
+        public float maxHealth = 100f;
+        public float attackDamage = 35f, attackCooldown = 1.6f, windup = 0.5f, reach = 1.1f, hitRadius = 0.9f;
+        [Tooltip("Layers the claws can hit. Everything by default; set to Player once the layer exists.")]
+        public LayerMask playerMask = ~0;
+        public float Health { get; private set; }
+        public bool IsDead => Health <= 0f;
+        /// True from the start of the wind-up until the swing has landed.
+        public bool IsAttacking { get; private set; }
+
+        AgentBrain brain; AgentMotor motor; AgentAnimatorBridge anim; Collider body; float nextAttack;
+
+        void Awake()
+        {
+            Health = maxHealth;
+            brain = GetComponent<AgentBrain>(); motor = GetComponent<AgentMotor>(); TryGetComponent(out anim);
+            body = GetComponent<Collider>();
+        }
+
+        public void TryAttack(Vector3 towards)
+        {
+            if (IsDead || Time.time < nextAttack) return;
+            nextAttack = Time.time + attackCooldown;
+            StartCoroutine(Attack(towards));
+        }
+
+        IEnumerator Attack(Vector3 towards)
+        {
+            IsAttacking = true;
+            motor.Stop();
+            anim?.Attack();
+            float t = 0f;
+            while (t < windup) { motor.FaceTowards(towards, 720f); t += Time.deltaTime; yield return null; }
+            IsAttacking = false;
+            if (IsDead) yield break;
+            Noise.Make(SoundType.AgentVoice, transform.position, 0.4f, SoundSource.AgentBody, gameObject);
+            // Hit resolution is physics, not perception: whatever is in front of the claws gets hit.
+            var centre = transform.position + Vector3.up * 1.1f + transform.forward * reach;
+            foreach (var c in Physics.OverlapSphere(centre, hitRadius, playerMask, QueryTriggerInteraction.Ignore))
+            {
+                if (c.transform.IsChildOf(transform)) continue;
+                var victim = c.GetComponentInParent<PlayerDeath>();
+                if (victim != null) { victim.Kill(gameObject); continue; }
+                var d = c.GetComponentInParent<IDamageable>();
+                if (d != null) d.TakeDamage(attackDamage, transform.position);
+            }
+        }
+
+        public void TakeDamage(float amount, Vector3 from)
+        {
+            if (IsDead) return;
+            Health -= amount;
+            if (IsDead)
+            {
+                StopAllCoroutines(); IsAttacking = false;
+                motor.Stop(); anim?.Die();
+                if (body) body.enabled = false;
+                return;
+            }
+            anim?.Hit();
+            brain.OnHurt(from);
+        }
+
+        public void Revive()
+        {
+            Health = maxHealth;
+            if (body) body.enabled = true;
+            anim?.Revive();
+        }
+
+        void OnDrawGizmosSelected()
+        {
+            Gizmos.color = new Color(1f, 0.2f, 0.2f, 0.5f);
+            Gizmos.DrawWireSphere(transform.position + Vector3.up * 1.1f + transform.forward * reach, hitRadius);
+        }
+    }
+}
