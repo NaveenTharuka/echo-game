@@ -2417,16 +2417,27 @@ MonoBehaviour:
     suspectThreshold: 0.3
     tau: 8
     minSpan: 1
+    velocityPrior: 3
+    dirSpeedRef: 1
     runSpeed: 5
     walkSpeed: 2.2
+    etaFromGait: 1
+    runToIntercept: 1
+    etaStartup: 0.15
+    etaArrive: 1
+    runAdvMin: -1
+    playerEtaSpeed: 2
     wProx: 1.2
     wDir: 1
     wAdv: 1
-    wHeat: 0.4
+    wHeat: 0
     proxSigma: 6
     advScale: 3
     reachSlack: 5
+    routeLead: 0
+    gateAdvantage: 1
     heatDecay: 0.995
+    minInterceptScore: 0.5
     freshnessTau: 8
     evidenceObs: 3
     fitScale: 3
