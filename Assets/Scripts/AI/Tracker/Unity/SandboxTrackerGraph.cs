@@ -5,8 +5,8 @@ using UnityEngine;
 
 namespace Echo.AI.Tracker
 {
-    /// Stub waypoint graph for Sandbox_Tracker until M4's NavGraph exists. Nodes and links are baked by
-    /// ECHO > Tracker > Build Sandbox_Tracker; at runtime they become a TrackerGraph whose door states follow
+    /// Stub waypoint graph for Sandbox_TrackerGrid until M4's NavGraph exists. Nodes and links are baked by
+    /// ECHO > Tracker > Build Sandbox_TrackerGrid; at runtime they become a TrackerGraph whose door states follow
     /// the scene's Door components (Door.Changed).
     [DefaultExecutionOrder(-100)]
     public class SandboxTrackerGraph : MonoBehaviour

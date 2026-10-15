@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Echo.AI.Tracker
 {
-    /// The Sandbox_Tracker level as data: a 9 x 9 grid of 6 m cells. Shared by the scene builder and the
+    /// The Sandbox_TrackerGrid level as data: a 9 x 9 grid of 6 m cells. Shared by the scene builder and the
     /// weight sweep, so the sweep runs on the same topology the agent is tested in.
     public static class SandboxTrackerLayout
     {

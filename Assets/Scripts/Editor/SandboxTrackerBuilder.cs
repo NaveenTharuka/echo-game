@@ -10,21 +10,21 @@ using static Echo.AI.Tracker.SandboxTrackerLayout;
 
 namespace Echo.EditorTools
 {
-    /// ECHO > Tracker > Build Sandbox_Tracker. Creates Assets/Scenes/Sandbox/Sandbox_Tracker.unity as a copy of
+    /// ECHO > Tracker > Build Sandbox_TrackerGrid. Creates Assets/Scenes/Sandbox/Sandbox_TrackerGrid.unity as a copy of
     /// Sandbox_Interaction (keeps the configured player rig, HUD and light, removes its test areas), then
     /// (re)builds the tracker level: a 9 x 9 grid of 6 m cells - west spawn room, junction, north room
     /// (Tracker home), east room, a south arm with a sliding door, a south room and a loop corridor from the
     /// south room back to the east room (so a locked door has a detour). Bakes the NavMesh, writes the stub
     /// waypoint graph (one node per open cell, 4-neighbour links, the door link carries the Door) and places
-    /// the stub Tracker. Re-runnable; only ever edits Sandbox_Tracker.
+    /// the stub Tracker. Re-runnable; only ever edits Sandbox_TrackerGrid.
     static class SandboxTrackerBuilder
     {
-        public const string ScenePath = "Assets/Scenes/Sandbox/Sandbox_Tracker.unity";
-        const string NavMeshFolder = "Assets/Scenes/Sandbox/Sandbox_Tracker";
+        public const string ScenePath = "Assets/Scenes/Sandbox/Sandbox_TrackerGrid.unity";
+        const string NavMeshFolder = "Assets/Scenes/Sandbox/Sandbox_TrackerGrid";
         const string NavMeshPath = NavMeshFolder + "/NavMesh-TrackerArea.asset";
         const float WallHeight = 4f;
 
-        [MenuItem("ECHO/Tracker/Build Sandbox_Tracker")]
+        [MenuItem("ECHO/Tracker/Build Sandbox_TrackerGrid")]
         static void Build()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode) { Debug.LogError("[SandboxTrackerBuilder] Exit Play Mode first."); return; }
@@ -67,7 +67,7 @@ namespace Echo.EditorTools
             surface.collectObjects = CollectObjects.Children;
             surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
             surface.BuildNavMesh();
-            if (!AssetDatabase.IsValidFolder(NavMeshFolder)) AssetDatabase.CreateFolder("Assets/Scenes/Sandbox", "Sandbox_Tracker");
+            if (!AssetDatabase.IsValidFolder(NavMeshFolder)) AssetDatabase.CreateFolder("Assets/Scenes/Sandbox", "Sandbox_TrackerGrid");
             if (AssetDatabase.LoadAssetAtPath<Object>(NavMeshPath) != null) AssetDatabase.DeleteAsset(NavMeshPath);
             AssetDatabase.CreateAsset(surface.navMeshData, NavMeshPath);
 
@@ -99,7 +99,7 @@ namespace Echo.EditorTools
                       $"Player kept: {player != null}.");
         }
 
-        /// Play Mode scenarios (a-e) in Sandbox_Tracker; one report in the console when done (~2 min).
+        /// Play Mode scenarios (a-e) in Sandbox_TrackerGrid; one report in the console when done (~2 min).
         [MenuItem("ECHO/Tracker/Run Scenarios")]
         static void RunScenarios()
         {

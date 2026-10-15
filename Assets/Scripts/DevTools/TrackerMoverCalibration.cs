@@ -8,7 +8,7 @@ using L = Echo.AI.Tracker.SandboxTrackerLayout;
 
 namespace Echo.DevTools
 {
-    /// ECHO > Tracker > Calibrate Mover (Play Mode in Sandbox_Tracker). Measures how long the real mover
+    /// ECHO > Tracker > Calibrate Mover (Play Mode in Sandbox_TrackerGrid). Measures how long the real mover
     /// (NavMeshTrackerMover on a NavMeshAgent) takes to reach a node, so the Tracker's ETA model is fitted to the
     /// body it actually has instead of route / runSpeed.
     ///   Trials: both gaits, standing starts facing along and against the first leg, 0-2 turns, 6-48 m, plus
@@ -36,7 +36,7 @@ namespace Echo.DevTools
         IEnumerator RunAll()
         {
             agent = FindFirstObjectByType<TrackerStubAgent>();
-            if (agent == null || agent.Decider == null) { Debug.LogError("[TrackerMoverCalibration] Needs Sandbox_Tracker in Play Mode."); Destroy(gameObject); yield break; }
+            if (agent == null || agent.Decider == null) { Debug.LogError("[TrackerMoverCalibration] Needs Sandbox_TrackerGrid in Play Mode."); Destroy(gameObject); yield break; }
             mover = agent.GetComponent<NavMeshTrackerMover>();
             nav = agent.GetComponent<NavMeshAgent>();
             Vector3 home = agent.Decider.Home;
