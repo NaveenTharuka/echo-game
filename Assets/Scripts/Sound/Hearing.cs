@@ -18,6 +18,13 @@ namespace Echo.Sound
         public float maxPositionError = 6f, minPositionError = 0.5f;
         [Tooltip("Loudness that wakes the brain immediately instead of waiting for its tick")]
         public float urgentLoudness = 0.45f;
+        [Tooltip("Extra sensitivity while hunting: effective = sensitivity x (1 + alertBoost x Alertness). " +
+                 "A hunting agent strains to hear, so sneaking away from it needs real care.")]
+        public float alertBoost = 0.5f;
+
+        /// 0 calm ... 1 hunting. Set by AgentBrain from its AlertLevel every frame.
+        public float Alertness { get; set; }
+        public float EffectiveSensitivity => sensitivity * (1f + alertBoost * Mathf.Clamp01(Alertness));
 
         readonly List<PerceivedSound> inbox = new();
         public bool HasUrgent { get; private set; }
@@ -32,7 +39,7 @@ namespace Echo.Sound
 
             Vector3 ear = transform.position + Vector3.up * earHeight;
             float d = Acoustics.EffectiveDistance(e.Position, ear);
-            float loud = Acoustics.Loudness(e.Intensity, sensitivity, d);
+            float loud = Acoustics.Loudness(e.Intensity, EffectiveSensitivity, d);
             if (loud < threshold) return;
 
             // Fainter sound => worse localisation. Blind hunters must search.

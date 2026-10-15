@@ -28,6 +28,8 @@ namespace Echo.EditorTools
             public string PrefabPath;
             public Type BrainType;
             public float HearingSensitivity = 1f;
+            /// Run gait speed (m/s). The player sprints at 6: a hunter slower than that can always be outrun.
+            public float RunSpeed = 5f;
             public int AvoidancePriority = 50;
             public float AttackDamage = 35f;
             /// Clip name suffix in the FBX -> clean name.  Locomotion: Idle, Sneak, Walk, Run.
@@ -64,7 +66,7 @@ namespace Echo.EditorTools
             ControllerPath = "Assets/Art/Characters/Listener/Animations/Listener.controller",
             PrefabPath = "Assets/Prefabs/Agents/Listener.prefab",
             BrainType = typeof(ListenerBrain),
-            HearingSensitivity = 1.15f,
+            HearingSensitivity = 1.15f, RunSpeed = 6f,
             AvoidancePriority = 40,
             AttackDamage = 35f,
             BreathingLoopPath = "Assets/Audio/Agents/Listener/Listener_Breathing_Loop.wav",
@@ -91,7 +93,7 @@ namespace Echo.EditorTools
             ControllerPath = "Assets/Art/Characters/Tracker/Animations/Tracker.controller",
             PrefabPath = "Assets/Prefabs/Agents/Tracker.prefab",
             BrainType = typeof(TrackerBrain),
-            HearingSensitivity = 1.0f,
+            HearingSensitivity = 1.0f, RunSpeed = 5.5f,
             AvoidancePriority = 45,
             AttackDamage = 35f,
             // Demon_animated.fbx: exported ~5.95 m tall -> 2.4 m. The Ball mesh is a throw prop: hidden.
@@ -123,7 +125,7 @@ namespace Echo.EditorTools
             ControllerPath = "Assets/Art/Characters/Ambusher/Animations/Ambusher.controller",
             PrefabPath = "Assets/Prefabs/Agents/Ambusher.prefab",
             BrainType = typeof(AmbusherBrain),
-            HearingSensitivity = 1.4f,     // best ears (guide §12.1)
+            HearingSensitivity = 1.4f, RunSpeed = 6.5f,     // best ears; short explosive lunges (guide §12.1)
             AvoidancePriority = 55,
             AttackDamage = 50f,
             ModelScale = 0.8f,             // 3.0 m brute -> 2.4 m
@@ -381,7 +383,7 @@ namespace Echo.EditorTools
                 capsule.center = new Vector3(0f, 1f, 0f); capsule.height = 2f; capsule.radius = 0.4f;
 
                 root.AddComponent<Hearing>().sensitivity = spec.HearingSensitivity;
-                root.AddComponent<AgentMotor>();
+                root.AddComponent<AgentMotor>().runSpeed = spec.RunSpeed;
                 var body = root.AddComponent<AgentBody>();
                 body.attackDamage = spec.AttackDamage;
                 // Everything: a mask like ~Agents is saved with only *named* layers, which would drop the player's

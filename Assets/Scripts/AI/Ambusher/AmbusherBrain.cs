@@ -13,6 +13,8 @@ namespace Echo.AI
     ///      +---- RELOCATE <-- timeout / player heard on another route ----- WAIT (silent, listening, facing the approach)
     ///                                                                         | sound <= strikeDistance, or touch
     ///                                                                       ATTACK (lunge + swing) --> OBSERVE
+    ///                                                      missed? any sound within pursuitRange for pursuitWindow s
+    ///                                                      --> lunge again (at most maxLunges in a row)
     /// Learning (RouteModel) runs on every tick whatever the state.
     public class AmbusherBrain : AgentBrain
     {
@@ -33,6 +35,12 @@ namespace Echo.AI
         public bool keepMemoryAcrossDeaths = true;
         [Tooltip("Ignore sounds older than this when deciding (s).")]
         public float maxEstimateAge = 30f;
+        [Header("Pursuit after a missed swing")]
+        [Tooltip("Seconds after a swing during which a nearby sound triggers another lunge.")]
+        public float pursuitWindow = 5f;
+        [Tooltip("A sound this close (m) during the pursuit window triggers another lunge.")]
+        public float pursuitRange = 10f;
+        public int maxLunges = 3;
 
         RouteModel model;
         State state = State.Observe;
@@ -40,6 +48,7 @@ namespace Echo.AI
         Vector3 playerEst, strikeTarget; float playerEstTime = -999f; int ambushNode = -1;
         readonly Dictionary<int, float> lastUsed = new();
         Dictionary<string, float> lastPass = new();
+        float pursueUntil = -1f; int lunges;
 
         // Read by the Mimic (guide §11) - keep these three stable.
         public bool HasAmbushPoint => ambushNode >= 0 && state is State.MoveToAmbush or State.Wait;
@@ -49,7 +58,7 @@ namespace Echo.AI
         public RouteModel Model => model;
         public override string DisplayName => "AMBUSHER";
         public override string StateName => model == null ? "NoGraph" : state.ToString();
-        public override float AlertLevel => state switch { State.Attack => 1f, State.Wait => 0.5f, State.MoveToAmbush => 0.35f, _ => 0.1f };
+        public override float AlertLevel => Time.time < pursueUntil ? 0.9f : state switch { State.Attack => 1f, State.Wait => 0.5f, State.MoveToAmbush => 0.35f, _ => 0.1f };
         public override float CurrentInterest => confidence;
         public override string DebugText => model == null ? "waiting for NavGraph + zones" :
             $"zone {model.CurrentZone ?? "-"}  obs {model.TotalObservations():0.0}  conf {confidence:0.00}  " +
@@ -75,8 +84,10 @@ namespace Echo.AI
                 playerEst = s.EstimatedPosition; playerEstTime = s.TimeHeard;
 
                 float d = Vector3.Distance(s.EstimatedPosition, transform.position);
+                bool pursuing = Time.time < pursueUntil && d <= pursuitRange;
                 if (state != State.Attack &&
-                    ((state == State.Wait && d <= strikeDistance) || (d <= closeStrike && s.PositionError < 1.5f)))
+                    ((state == State.Wait && d <= strikeDistance) || pursuing ||
+                     (d <= closeStrike && s.PositionError < 1.5f)))
                 { BeginAttack(s.EstimatedPosition); }
             }
 
@@ -110,7 +121,12 @@ namespace Echo.AI
                     if (swungAt < 0f && (Arrived || Failed || stateTime > 2.5f ||
                                          Vector3.Distance(transform.position, strikeTarget) <= Body.reach + 1f))
                     { Body.TryAttack(strikeTarget); swungAt = stateTime; }
-                    else if (swungAt >= 0f && stateTime - swungAt > 1.8f && !Body.IsAttacking) Enter(State.Observe, "swing done");
+                    else if (swungAt >= 0f && stateTime - swungAt > 1.8f && !Body.IsAttacking)
+                    {
+                        // Missed (the player is still alive): keep listening hard and lunge again at the next sound.
+                        pursueUntil = lunges < maxLunges ? Time.time + pursuitWindow : -1f;
+                        Enter(State.Observe, lunges < maxLunges ? $"swing done, pursuing for {pursuitWindow:0} s" : "swing done, giving up the chase");
+                    }
                     break;
             }
         }
@@ -162,7 +178,9 @@ namespace Echo.AI
 
         void BeginAttack(Vector3 where)
         {
-            Enter(State.Attack, $"lunge: sound {Vector3.Distance(where, transform.position):0.0} m away");
+            if (Time.time >= pursueUntil) lunges = 0;
+            lunges++; pursueUntil = -1f;
+            Enter(State.Attack, $"lunge {lunges}: sound {Vector3.Distance(where, transform.position):0.0} m away");
             strikeTarget = where; swungAt = -1f;
             Motor.MoveTo(where, AgentMotor.Gait.Run);
         }
@@ -220,7 +238,7 @@ namespace Echo.AI
         {
             base.ResetAgent();
             if (!keepMemoryAcrossDeaths) model?.Clear();
-            ambushNode = -1; confidence = 0f; Enter(State.Observe, "reset");
+            ambushNode = -1; confidence = 0f; pursueUntil = -1f; lunges = 0; Enter(State.Observe, "reset");
         }
 
         void Enter(State s, string why)

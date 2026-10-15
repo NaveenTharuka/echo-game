@@ -23,6 +23,11 @@ namespace Echo.AI
         public static float Score(float loudness, SoundType type, float age, float habituation = 1f)
             => loudness * TypeWeight(type) * Mathf.Exp(-age / RecencyTau) * habituation;
 
+        /// Sounds a moving body makes. While hunting, the newest of these always wins over an older target:
+        /// a fresh step tells where the prey IS, an old gunshot only where it WAS.
+        public static bool IsTrail(SoundType t)
+            => t is SoundType.Footstep or SoundType.Run or SoundType.Jump or SoundType.Land;
+
         /// Hysteresis: adopt a new sound only if it clearly beats the current one, or the current one is stale.
         public static bool ShouldSwitch(float newPriority, float currentPriority, float currentAge)
             => newPriority > SwitchFactor * currentPriority || currentAge > 10f;

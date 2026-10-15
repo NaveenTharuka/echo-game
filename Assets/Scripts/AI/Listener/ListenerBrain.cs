@@ -10,6 +10,13 @@ namespace Echo.AI
     ///   Idle --faint--> Suspicious --2nd sound / 2.5 s--> Investigate --arrived--> Search --done/20 s--> Return --> Idle
     ///   Idle --loud---> Alert (scream, 0.9 s) --> Investigate at Run (better sound, with hysteresis, re-targets at any time)
     ///   any state: sound within strikeDistance (fresh, precise) or touch --> Attack --> Search (tight)
+    ///
+    /// Hunting pressure (so a gunshot + walking away is not a free escape):
+    ///   - trail following: while hunting, a fresh step/run/land sound replaces an older target at once
+    ///     (hysteresis would otherwise keep it walking to the stale gunshot for ~10 s);
+    ///   - a hunting Listener moves at Run and its ears are sharper (Hearing.alertBoost);
+    ///   - search starts where the prey was heading, then the nearby exits, then a ring;
+    ///   - after losing the trail it stays on edge for edgeDuration: no slow "Suspicious" phase, straight back in.
     public class ListenerBrain : AgentBrain
     {
         enum State { Idle, Suspicious, Alert, Investigate, Search, Return, Attack }
@@ -26,17 +33,30 @@ namespace Echo.AI
         public float alertDuration = 0.9f;
         public float searchDuration = 20f, searchPause = 1.5f;
         public int searchPoints = 4;
+        [Header("Hunting pressure")]
+        [Tooltip("While hunting, a step/run sound adopts over the current target once that target is this old (s).")]
+        public float trailRefresh = 0.8f;
+        [Tooltip("Seconds it stays on edge after losing the trail (sharper ears, charges straight at sounds).")]
+        public float edgeDuration = 30f;
+        [Tooltip("Exits (Doorway nodes) closer than this to the search centre are checked first (m).")]
+        public float exitSearchRadius = 14f;
 
         State state = State.Idle;
         PerceivedSound target; float targetPriority; bool hasTarget;
         float stateTime, pauseUntil;
         List<Vector3> searchList = new(); int searchIndex; Vector3 searchCentre;
         int investigateFailures;
+        float edgeUntil = -1f;
+        Vector3 trailFrom; float trailFromTime = -999f;   // previous trail position -> heading of the prey
+        bool headingPoint;                                // searchList[0] is "where it was heading"
 
         public override string DisplayName => "LISTENER";
         public override string StateName => state.ToString();
-        public override float AlertLevel => state switch { State.Investigate => 0.7f, State.Search => 0.5f,
-                                                           State.Attack => 1f, State.Alert => 0.8f, State.Suspicious => 0.3f, _ => 0f };
+        public override float AlertLevel => state switch { State.Investigate => 0.7f, State.Search => 0.6f,
+                                                           State.Attack => 1f, State.Alert => 0.8f,
+                                                           _ => OnEdge ? 0.4f : state == State.Suspicious ? 0.3f : 0f };
+        bool OnEdge => Time.time < edgeUntil;
+        bool Hunting => state is State.Alert or State.Investigate or State.Search or State.Attack || OnEdge;
         public override float CurrentInterest => hasTarget ? CurrentPriority() : 0f;
         public override string DebugText => hasTarget
             ? $"target {target.Type} p={CurrentPriority():0.00} err={target.PositionError:0.0}m age={Time.time - target.TimeHeard:0.0}s"
@@ -62,8 +82,11 @@ namespace Echo.AI
                     float p = ListenerPriority.Score(s.Loudness, s.Type, 0f, Habituation.Factor(s));
                     if (p > bestP) { bestP = p; best = s; }
                 }
+                bool freshTrail = Hunting && hasTarget && ListenerPriority.IsTrail(best.Type) &&
+                                  Time.time - target.TimeHeard >= trailRefresh;
                 if (bestP > noticeCutoff &&
-                    (!hasTarget || ListenerPriority.ShouldSwitch(bestP, CurrentPriority(), Time.time - target.TimeHeard)))
+                    (!hasTarget || freshTrail ||
+                     ListenerPriority.ShouldSwitch(bestP, CurrentPriority(), Time.time - target.TimeHeard)))
                     Adopt(best, bestP);
             }
 
@@ -84,7 +107,7 @@ namespace Echo.AI
                     break;
 
                 case State.Investigate:
-                    if (Arrived) BeginSearch(target.EstimatedPosition, target.PositionError + 2f);
+                    if (Arrived) BeginSearch(target.EstimatedPosition, target.PositionError + 2f, Heading());
                     else if (Failed)
                     {
                         // Can't reach the estimate: try a point 2 m closer to us, then give up and search here.
@@ -106,7 +129,9 @@ namespace Echo.AI
                         else if (searchIndex < searchList.Count)
                         {
                             if (Anim) Anim.SetListening(false);
-                            Motor.MoveTo(searchList[searchIndex], AgentMotor.Gait.Walk);
+                            // The first point (where the prey was heading) is taken at a run.
+                            Motor.MoveTo(searchList[searchIndex],
+                                         searchIndex == 0 && headingPoint ? AgentMotor.Gait.Run : AgentMotor.Gait.Walk);
                         }
                     }
                     break;
@@ -116,16 +141,23 @@ namespace Echo.AI
                     break;
 
                 case State.Attack:
-                    if (stateTime > 1.8f && !Body.IsAttacking) BeginSearch(transform.position, 3f);
+                    if (stateTime > 1.8f && !Body.IsAttacking) BeginSearch(transform.position, 3f, Heading());
                     break;
             }
         }
 
         void Adopt(PerceivedSound s, float p)
         {
+            bool hunting = Hunting;
             bool wasCalm = state is State.Idle or State.Return or State.Suspicious;
+            if (hasTarget && ListenerPriority.IsTrail(target.Type)) { trailFrom = target.EstimatedPosition; trailFromTime = target.TimeHeard; }
             target = s; targetPriority = p; hasTarget = true; investigateFailures = 0;
-            if (p < suspiciousCutoff && state is State.Idle or State.Return)
+            if (hunting)
+            {
+                // Already after something (or on edge): no listening pause, no scream - go for it.
+                if (state != State.Alert) BeginInvestigate(AgentMotor.Gait.Run);
+            }
+            else if (p < suspiciousCutoff && state is State.Idle or State.Return)
             {
                 Enter(State.Suspicious);
                 Motor.Stop();
@@ -156,11 +188,26 @@ namespace Echo.AI
             Motor.MoveTo(target.EstimatedPosition, gait);
         }
 
-        void BeginSearch(Vector3 centre, float radius)
+        /// Direction the prey was moving: from the previous trail sound to the current target (zero if unknown).
+        Vector3 Heading()
+        {
+            if (!hasTarget || target.TimeHeard - trailFromTime > 6f) return Vector3.zero;
+            Vector3 d = target.EstimatedPosition - trailFrom; d.y = 0f;
+            return d.sqrMagnitude > 1f ? d.normalized : Vector3.zero;
+        }
+
+        void BeginSearch(Vector3 centre, float radius, Vector3 heading = default)
         {
             Enter(State.Search);
             searchCentre = centre;
-            searchList = SearchPattern.Ring(centre, Mathf.Clamp(radius, 2f, 8f), searchPoints);
+            // 1. where it was heading, 2. the exits it could have left by, 3. a ring around the spot.
+            searchList = new List<Vector3>();
+            Vector3 ahead = centre;
+            headingPoint = heading != Vector3.zero &&
+                           SearchPattern.TryReachable(centre, centre + heading * 6f, out ahead);
+            if (headingPoint) searchList.Add(ahead);
+            searchList.AddRange(SearchPattern.Exits(centre, transform.position, exitSearchRadius, 2));
+            searchList.AddRange(SearchPattern.Ring(centre, Mathf.Clamp(radius, 2f, 8f), searchPoints));
             searchIndex = 0; pauseUntil = Time.time + searchPause;
             Motor.Stop();
             if (Anim) Anim.SetListening(true);
@@ -172,6 +219,7 @@ namespace Echo.AI
                                          or SoundType.ObjectDrop or SoundType.Switch)
                 Habituation.MarkBoring(target.Type, target.EstimatedPosition);
             hasTarget = false;
+            edgeUntil = Time.time + edgeDuration;     // lost the trail, but it knows something is out there
             Enter(State.Return);
             Motor.MoveTo(Home, AgentMotor.Gait.Walk);
         }
@@ -189,7 +237,7 @@ namespace Echo.AI
 
         public override void ResetAgent()
         {
-            base.ResetAgent(); hasTarget = false; Enter(State.Idle);
+            base.ResetAgent(); hasTarget = false; edgeUntil = -1f; trailFromTime = -999f; Enter(State.Idle);
         }
 
         void Enter(State s)

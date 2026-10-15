@@ -388,7 +388,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Echo.AI.AgentMotor
   sneakSpeed: 1.2
   walkSpeed: 2.2
-  runSpeed: 5
+  runSpeed: 5.5
   waypointRadius: 0.8
   stuckTimeout: 2.5
 --- !u!114 &5385622298137651068
