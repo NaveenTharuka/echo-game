@@ -225,7 +225,10 @@ namespace Echo.EditorTools
             l.intensity = 70f; l.range = 25f; l.spotAngle = 55f; l.innerSpotAngle = 28f; l.shadows = LightShadows.Soft;
         }
 
-        static bool CopyPlayer()
+        static bool CopyPlayer() => CopyPlayer(PlayerSpawn, Quaternion.Euler(0f, -60f, 0f));
+
+        /// Copies the fully wired PlayerCapsule + InteractionHUD from Sandbox_Interaction into the active scene.
+        internal static bool CopyPlayer(Vector3 spawn, Quaternion rotation)
         {
             if (!File.Exists(PlayerSourceScene)) { Debug.LogWarning($"[ListenerSandboxBuilder] {PlayerSourceScene} missing: add a player by hand."); return false; }
             var target = EditorSceneManager.GetActiveScene();
@@ -242,7 +245,7 @@ namespace Echo.EditorTools
                     if (root.name == "PlayerCapsule")
                     {
                         found = true;
-                        copy.transform.SetPositionAndRotation(PlayerSpawn, Quaternion.Euler(0f, -60f, 0f));
+                        copy.transform.SetPositionAndRotation(spawn, rotation);
                         SetUpPlayerCamera(copy);
                     }
                 }
