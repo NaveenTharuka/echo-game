@@ -10,7 +10,7 @@ namespace Echo.AI.Tracker
     /// Touch = a small overlap sphere polled on the tick (stand-in for M4's ContactSense).
     /// Attack = a short-range overlap in front of the agent; only a body actually there is hit.
     [RequireComponent(typeof(NavMeshTrackerMover), typeof(TrackerPerceptionStub))]
-    public class TrackerStubAgent : MonoBehaviour
+    public class TrackerStubAgent : MonoBehaviour, ITrackerDebugSource
     {
         public SandboxTrackerGraph graph;
         public TrackerSettings settings = new();

@@ -6,22 +6,32 @@ using UnityEngine.Rendering;
 
 namespace Echo.AI.Tracker
 {
+    /// What the overlay reads: the decider and the think-cost counters (TrackerBrain, TrackerStubAgent).
+    public interface ITrackerDebugSource
+    {
+        TrackerDecider Decider { get; }
+        int Ticks { get; }
+        float LastThinkMs { get; }
+        float AvgThinkMs { get; }
+        float MaxThinkMs { get; }
+    }
+
     /// Tracker debug view (editor and development builds only; F2 toggles). Reads the decider, never writes.
     /// World: breadcrumbs with error circles (orange), suspects (magenta), velocity arrow (cyan), predicted
     /// point (red), candidate nodes coloured by score (blue = low, yellow = high), chosen node (green),
     /// cold-trail search (white = visited). Screen: state, confidence and its parts, think cost.
-    [RequireComponent(typeof(TrackerStubAgent))]
+    /// Needs an ITrackerDebugSource on the same object (TrackerBrain or the grid sandbox's TrackerStubAgent).
     public class TrackerDebugOverlay : MonoBehaviour
     {
         public bool show = true;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-        TrackerStubAgent agent;
+        ITrackerDebugSource agent;
         static Material lineMaterial;
         GUIStyle style;
         string text = "";
         int textTick = -1;
 
-        void Awake() => agent = GetComponent<TrackerStubAgent>();
+        void Awake() => TryGetComponent(out agent);
         void OnEnable() => RenderPipelineManager.endCameraRendering += Draw;
         void OnDisable() => RenderPipelineManager.endCameraRendering -= Draw;
 
@@ -92,7 +102,7 @@ namespace Echo.AI.Tracker
             for (int i = 0; i < m.SuspectCount; i++) Cross(m.Suspect(i).Position + Vector3.up * lift, 0.6f, Color.magenta);
             if (m.HasLast && d.HasVelocity)
             {
-                Vector3 a = m.Last.Position + Vector3.up * lift;
+                Vector3 a = d.Anchor.Position + Vector3.up * lift;      // the fitted trail point it scored from
                 Line(a, a + d.Velocity, Color.cyan);
                 Cross(d.Predicted + Vector3.up * lift, 0.7f, Color.red);
                 Circle(d.Predicted + Vector3.up * lift, 0.5f, Color.red);
@@ -137,7 +147,7 @@ namespace Echo.AI.Tracker
                        $"heard: accepted {d.Accepted}  suspect {d.Suspects}  resets {d.Resets}  filtered {d.Filtered}  " +
                        $"last {d.LastResult} cred {d.LastCredibility:0.00}\n" +
                        $"think {agent.LastThinkMs:0.000} ms  avg {agent.AvgThinkMs:0.000}  max {agent.MaxThinkMs:0.000}  " +
-                       $"Dijkstra {d.Routes.Computations}  kills {agent.Kills}   [F2 hide]";
+                       $"Dijkstra {d.Routes.Computations}" + (agent is TrackerStubAgent stub ? $"  kills {stub.Kills}" : "") + "   [F2 hide]";
             }
             style ??= new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 13, richText = false };
             GUI.Box(new Rect(10f, 10f, 640f, 98f), text, style);
