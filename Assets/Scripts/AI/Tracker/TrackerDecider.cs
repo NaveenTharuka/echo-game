@@ -118,6 +118,7 @@ namespace Echo.AI.Tracker
             var s = Settings;
             float now = input.Now;
             int n = World.Count;
+            if (n == 0) return TrackerCommand.None;                   // no graph (yet): nothing to plan on
             if (banned.Length != n) banned = new bool[n];
             Heat.EnsureSize(n);
             Heat.Decay(s.heatDecay);
@@ -157,6 +158,7 @@ namespace Echo.AI.Tracker
                 HasGoal = false;
                 return new TrackerCommand(TrackerCommandKind.Attack, strikeAt);
             }
+            if (selfNode < 0) return TrackerCommand.None;             // off the graph: keep listening, plan nothing
 
             switch (State)
             {
@@ -293,7 +295,8 @@ namespace Echo.AI.Tracker
             {
                 var anchor = s.anchor == TrackerAnchor.Line ? anchorLine : anchorShrunk;
                 last.Position = new Vector3(anchor.x, last.Position.y, anchor.z);
-                last.Node = World.Nearest(last.Position);
+                int an = World.Nearest(last.Position);
+                if (an >= 0) last.Node = an;                       // else keep the latest sound's own node
             }
             Anchor = last;
             if (HasVelocity &&

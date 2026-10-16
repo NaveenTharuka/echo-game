@@ -379,6 +379,19 @@ namespace Echo.EditorTools
         }
 
         /// Tiny simulation: a MoveTo teleports the agent to the target and reports Arrived next tick.
+        /// A real graph whose Nearest always fails (-1), as an adapter may report for a point it cannot place.
+        sealed class OffGraphWorld : ITrackerWorld
+        {
+            readonly ITrackerWorld w;
+            public OffGraphWorld(ITrackerWorld inner) => w = inner;
+            public int Count => w.Count;
+            public int Version => w.Version;
+            public Vector3 Position(int node) => w.Position(node);
+            public int NeighbourCount(int node) => w.NeighbourCount(node);
+            public TrackerEdge Neighbour(int node, int k) => w.Neighbour(node, k);
+            public int Nearest(Vector3 p) => -1;
+        }
+
         sealed class Sim
         {
             public readonly TrackerDecider D;
@@ -468,6 +481,25 @@ namespace Echo.EditorTools
             c = sim.Tick();
             Check("close precise sound: Attack", c.Kind == TrackerCommandKind.Attack && sim.D.State == TrackerState.Attack,
                   $"cmd={c.Kind} state={sim.D.State}");
+
+            // Nearest = -1 (an empty graph, or a world that cannot place a point): no exception, nothing stored or planned.
+            string thrown = "none";
+            var empty = new Sim(new TrackerGraph(), Vector3.zero);
+            var off = new Sim(new OffGraphWorld(Corridor(20f, 2f)), Vector3.zero);
+            try
+            {
+                foreach (var e in new[] { empty, off })
+                    for (int i = 0; i < 6; i++)
+                    {
+                        e.Percepts.Add(new TrackerPercept(new Vector3(4f + i, 0f, 0f), 0.5f, e.Now + 0.1f, HeardKind.Run));
+                        e.Tick(0.5f);
+                    }
+            }
+            catch (Exception ex) { thrown = ex.GetType().Name; }
+            Check("Nearest = -1: no exception, sound not stored, no command",
+                  thrown == "none" && empty.D.Memory.Count == 0 && off.D.Memory.Count == 0 &&
+                  empty.Last.Kind == TrackerCommandKind.None && off.Last.Kind == TrackerCommandKind.None && off.D.Filtered == 6,
+                  $"thrown={thrown} mem={empty.D.Memory.Count}/{off.D.Memory.Count} cmd={empty.Last.Kind}/{off.Last.Kind} filtered={off.D.Filtered}");
 
             // Player dies -> reset (the Tracker is away from home).
             sim.Self = new Vector3(20f, 0f, 0f);

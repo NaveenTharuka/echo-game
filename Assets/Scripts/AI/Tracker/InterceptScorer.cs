@@ -83,6 +83,7 @@ namespace Echo.AI.Tracker
             int n = w.Count;
             EnsureSize(n);
             Best = Second = -1; BestScore = SecondScore = float.NegativeInfinity; CandidateCount = 0; Margin = 0f;
+            if (last.Node < 0 || last.Node >= n) return false;     // trail point not on the graph
             bool constraint = s.advMode == AdvantageMode.Constraint || s.advMode == AdvantageMode.ConstraintOnLine;
             // Constraint modes keep two pools: feasible nodes (used if any) and all candidates (the fallback).
             int fBest = -1, fSecond = -1, fCount = 0; float fBestScore = float.NegativeInfinity, fSecondScore = float.NegativeInfinity;

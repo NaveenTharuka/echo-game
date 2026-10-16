@@ -62,11 +62,12 @@ namespace Echo.AI.Tracker
             : float.IsPositiveInfinity(route) ? 0f
             : Mathf.Exp(-(route - allowed) / s.credibilityFalloff);
 
-        /// `node` = nearest graph node of the percept. Percepts must arrive in time order.
+        /// `node` = nearest graph node of the percept (-1 = none: filtered). Percepts must arrive in time order.
         public ObservationResult Add(in TrackerPercept p, int node, RouteService routes, out float credibility)
         {
             credibility = 0f;
             if (!TrackerSoundFilter.IsTrail(p.Kind)) return ObservationResult.Filtered;
+            if (node < 0) return ObservationResult.Filtered;   // not on the graph: no route, so no credibility test
             Prune(p.Time);
 
             var o = new TrackerObservation
