@@ -21,9 +21,9 @@ namespace Echo.DevTools
     ///   b fake sound   - an audible gunshot far (by route) from the runner mid-trail: heard, rejected as a suspect,
     ///                    the trail and the goal stay with the runner
     ///   c player quiet - best-first search (>= 1 node visited), then Idle with memory cleared
-    ///   d locked door  - doors spawned in the only doorway (one per graph edge crossing it) and locked; gunshots in the
-    ///                    east room: no goal behind the locked door and no crossing; after the unlock it opens a door
-    ///                    itself and reaches the room.
+    ///   d locked door  - one door spawned in the only doorway and locked, after a graph rebuild: it must gate every
+    ///                    edge that crosses the doorway; gunshots in the east room: no goal behind the locked door and no
+    ///                    crossing; after the unlock it opens the door itself and reaches the room.
     ///                    Also checks Door -> NavGraph.OnDoorChanged (Version bumps on lock and unlock)
     ///   e player death - Reset on Died (Idle, memory empty); after the reload a fresh Tracker is Idle
     public class TrackerNavGraphScenarios : MonoBehaviour
@@ -274,22 +274,20 @@ namespace Echo.DevTools
         {
             var d = agent.Decider;
             var graph = NavGraph.Instance;
-            // dev's Auto-Link joins every node pair with a near-straight NavMesh walk, so several edges cross the
-            // doorway (not only the doorway-node pair). A Door gates one edge: one door per crossing edge.
-            var doors = new List<Door>();
+            // dev's Auto-Link joins every node pair with a near-straight NavMesh walk, so many edges cross the doorway,
+            // not only the doorway-node pair. ONE door, sides = the doorway nodes: it must attach itself to all of them.
             var crossing = new StringBuilder();
+            int crossingEdges = 0;                                            // both directions
             for (int i = 0; i < graph.Count; i++)
                 foreach (var e in graph.Neighbours(i))
-                    if (e.To > i && graph.Position(i).x * graph.Position(e.To).x < 0f)
-                    {
-                        doors.Add(SpawnDoor(graph.Node(i), graph.Node(e.To)));
-                        crossing.Append($"{i}-{e.To} ");
-                    }
+                    if (graph.Position(i).x * graph.Position(e.To).x < 0f) { crossingEdges++; if (e.To > i) crossing.Append($"{i}-{e.To} "); }
+            int na = graph.Nearest(DoorCentre + new Vector3(-1.5f, 0f, 0f)), nb = graph.Nearest(DoorCentre + new Vector3(1.5f, 0f, 0f));
+            var door = SpawnDoor(graph.Node(na), graph.Node(nb));
             int v0 = graph.Version;
-            doors[0].Lock();
+            door.Lock();
             int vLocked = graph.Version;
-            for (int i = 1; i < doors.Count; i++) doors[i].Lock();
-            graph.Build();                                                    // put the doors on their edges
+            graph.Build();                                                    // a rebuild: the door must re-attach itself
+            yield return null;                                                // (Door.Update, before agents plan)
             bool onEdge = true;
             for (int i = 0; i < d.World.Count; i++)
                 for (int k = 0; k < d.World.NeighbourCount(i); k++)
@@ -311,29 +309,31 @@ namespace Echo.DevTools
             }
             int heardLocked = d.Accepted + d.Suspects + d.Resets - heard0;
             int vBeforeUnlock = graph.Version;
-            doors[0].Unlock();
+            door.Unlock();
             int vUnlocked = graph.Version;
-            for (int i = 1; i < doors.Count; i++) doors[i].Unlock();
             float unlockAt = Time.time, minDist = float.PositiveInfinity; bool opened = false;
             while (Time.time < unlockAt + 25f)
             {
                 if (Time.time >= nextShot) { InteractionNoise.Emit(NoiseType.Gunshot, target, 1f, NoiseSource.Player, ghost.gameObject); nextShot = Time.time + 2f; }
-                foreach (var dr in doors) opened |= dr.isOpen;
+                opened |= door.isOpen;
                 Vector3 p = Feet(agent.transform);
                 if (p.x > 1.5f) minDist = Mathf.Min(minDist, Vector3.Distance(p, target));
                 if (minDist <= 6f) break;
                 yield return null;
             }
-            Check("d door -> NavGraph.OnDoorChanged: Version bumps on lock and unlock; every crossing edge carries a locked door",
-                  vLocked > v0 && vUnlocked > vBeforeUnlock && onEdge,
-                  $"version {v0} -> lock {vLocked}, {vBeforeUnlock} -> unlock {vUnlocked}, crossing edges {crossing}all locked={onEdge}");
-            Check("d locked door: heard, no goal behind it, never crossed; after unlock opens it and reaches the room",
-                  heardLocked > 0 && goalsBehind == 0 && maxX < 0.3f && opened && minDist <= 6f,
+            Check("d one door gates every crossing edge after a rebuild; Version bumps on lock and unlock",
+                  vLocked > v0 && vUnlocked > vBeforeUnlock && onEdge && door.AttachedEdges == crossingEdges,
+                  $"version {v0} -> lock {vLocked}, {vBeforeUnlock} -> unlock {vUnlocked}; door on {door.AttachedEdges}/{crossingEdges} " +
+                  $"directed crossing edges ({crossing}), all locked={onEdge}");
+            Check("d locked door: heard, no goal behind it, never crossed; after unlock reaches the room",
+                  heardLocked > 0 && goalsBehind == 0 && maxX < 0.3f && minDist <= 6f,
                   $"heard while locked {heardLocked}, goal frames behind door {goalsBehind}, max x {maxX:0.0}, " +
-                  $"door opened {opened}, closest in east room {(float.IsPositiveInfinity(minDist) ? "-" : minDist.ToString("0.0"))} m " +
+                  $"closest in east room {(float.IsPositiveInfinity(minDist) ? "-" : minDist.ToString("0.0"))} m " +
                   $"{Time.time - unlockAt:0.0} s after unlock, state {d.State}");
+            Check("d after unlock the Tracker opens the door itself (AgentMotor), never walks through it closed",
+                  opened, $"door opened {opened}");
 
-            foreach (var dr in doors) Destroy(dr.gameObject);
+            Destroy(door.gameObject);
             yield return null;
             graph.Build();                                                    // back to dev's door-less graph
         }
