@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using Echo.Interaction;
 using UnityEngine;
 using UnityEngine.Events;
@@ -21,9 +20,9 @@ namespace Echo.Navigation
         public enum State { Closed, Opening, Open, Closing, Locked }
 
         [Header("Waypoint graph (guide §6.4)")]
-        [Tooltip("The two NavNodes this door connects. Typed Component until M4's NavNode exists; change to NavNode then.")]
-        public Component sideA;
-        public Component sideB;
+        [Tooltip("The two NavNodes this door connects (NavGraph puts the door on that edge).")]
+        public NavNode sideA;
+        public NavNode sideB;
 
         [Header("Leaf")]
         [Tooltip("Kinematic, interpolated Rigidbody on the moving leaf (child of this object).")]
@@ -100,7 +99,7 @@ namespace Echo.Navigation
         /// Where the leaf's Rigidbody sits when fully closed, in world space.
         public Vector3 ClosedLeafPosition => transform.TransformPoint(closedLocalPos);
 
-        /// Raised whenever isOpen or isLocked changes (debug views; NavGraph is notified directly).
+        /// Raised whenever isOpen or isLocked changes (debug views; NavGraph is notified directly first).
         public static event Action<Door> Changed;
 
         const string PromptOpen = "Open", PromptClose = "Close", PromptLocked = "Locked", PromptBlocked = "Blocked";
@@ -178,7 +177,7 @@ namespace Echo.Navigation
             state = State.Closed;
             UpdateStatusLight();
             onUnlocked?.Invoke();
-            Changed?.Invoke(this);
+            NotifyChanged();
         }
 
         /// Locks now if closed, otherwise as soon as it finishes closing.
@@ -189,7 +188,7 @@ namespace Echo.Navigation
             state = State.Locked;
             UpdateStatusLight();
             onLocked?.Invoke();
-            Changed?.Invoke(this);
+            NotifyChanged();
         }
 
         // ---- motion ---------------------------------------------------------------------------
@@ -268,9 +267,11 @@ namespace Echo.Navigation
             return false;
         }
 
+        /// Open/close and lock/unlock both change the graph (A* cost, sound distances, route caches keyed on Version).
         void NotifyChanged()
         {
-            NavGraphBridge.DoorChanged();
+            var graph = NavGraph.Instance;
+            if (graph != null) graph.OnDoorChanged();
             Changed?.Invoke(this);
         }
 
@@ -304,36 +305,5 @@ namespace Echo.Navigation
             Gizmos.DrawLine(centre, centre + dir * d);
         }
 #endif
-
-        /// Calls NavGraph.Instance.OnDoorChanged() (guide §6.4) without a compile dependency on M4's
-        /// NavGraph, which is not merged yet. Replace with a direct call once it is.
-        static class NavGraphBridge
-        {
-            static bool bound;
-            static PropertyInfo instance;
-            static MethodInfo onDoorChanged;
-
-            [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-            static void ResetStatics() { bound = false; instance = null; onDoorChanged = null; }
-
-            public static void DoorChanged()
-            {
-                if (!bound)
-                {
-                    bound = true;
-                    foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
-                    {
-                        Type g = asm.GetType("Echo.Navigation.NavGraph");
-                        if (g == null) continue;
-                        instance = g.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static);
-                        onDoorChanged = g.GetMethod("OnDoorChanged", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
-                        break;
-                    }
-                }
-                if (instance == null || onDoorChanged == null) return;
-                object graph = instance.GetValue(null);
-                if (graph is UnityEngine.Object o && o != null) onDoorChanged.Invoke(graph, null);
-            }
-        }
     }
 }
