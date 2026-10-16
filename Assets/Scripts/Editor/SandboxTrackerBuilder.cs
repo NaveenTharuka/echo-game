@@ -144,6 +144,26 @@ namespace Echo.EditorTools
             Echo.DevTools.TrackerScenarios.LaunchAB(20, toggles);
         }
 
+        /// Integrated Tracker (TrackerBrain, real NavGraph + Hearing) in dev's Sandbox_Tracker, scenarios a-e (~3 min).
+        [MenuItem("ECHO/Tracker/Run NavGraph Scenarios (Sandbox_Tracker)")]
+        static void RunNavGraphScenarios()
+        {
+            const string scene = "Assets/Scenes/Sandbox/Sandbox_Tracker.unity";
+            if (EditorSceneManager.GetActiveScene().path != scene)
+            { Debug.LogError($"[TrackerNavGraphScenarios] Open {scene} and enter Play Mode first."); return; }
+            Echo.DevTools.TrackerNavGraphScenarios.Launch();
+        }
+
+        [MenuItem("ECHO/Tracker/Run NavGraph Scenarios (Sandbox_Tracker)", true)]
+        static bool CanRunNavGraphScenarios() => EditorApplication.isPlaying;
+
+        /// Any agent sandbox: a gunshot through InteractionNoise near each agent must reach its Hearing.
+        [MenuItem("ECHO/Dev/Agent Hearing Smoke Test")]
+        static void RunHearingSmokeTest() => Echo.DevTools.AgentHearingSmokeTest.Launch();
+
+        [MenuItem("ECHO/Dev/Agent Hearing Smoke Test", true)]
+        static bool CanRunHearingSmokeTest() => EditorApplication.isPlaying;
+
         /// Times the real mover over straight and cornered routes and fits the ETA model (~3 min).
         [MenuItem("ECHO/Tracker/Calibrate Mover")]
         static void CalibrateMover()
