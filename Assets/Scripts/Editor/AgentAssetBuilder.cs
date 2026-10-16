@@ -56,6 +56,9 @@ namespace Echo.EditorTools
             public string DamagedMaterial;
             /// Clips in separate FBX files (Maya-style "Model@clip.fbx"): folder + file prefix. Empty = clips are in the model.
             public string AnimationFolder, AnimationPrefix;
+            /// Blend-tree thresholds (m/s) for Sneak / Walk / Run. Must equal the speed each clip's planted feet move at,
+            /// or the body slides over the floor.
+            public Vector3 LocomotionSpeeds = new(1.2f, 2.2f, 5f);
             public string Folder => Path.GetDirectoryName(Path.GetDirectoryName(ModelPath)).Replace('\\', '/');
         }
 
@@ -73,16 +76,21 @@ namespace Echo.EditorTools
             BreathingMaxDistance = 12f,
             StepClipsFolder = "Assets/Audio/Agents/Listener",
             StepClipsPrefix = "Listener_Step_",
-            // Baked in Blender from ECHO_stage8_textured.blend (high-poly sculpt + procedural skin -> one 2048 atlas).
+            // v2 model (echo-creature/Listener/echo_creature.blend, Tools/Blender/bake_listener_v2.py): modelled ~8 m tall
+            // -> 0.28 = 2.3 m (hunched ~2 m). Clips are the Blender action names minus "Listener_".
+            ModelScale = 0.28f,
+            // Sneak / Walk / Run come from Tools/Blender/listener_locomotion.py: strides computed so the planted feet
+            // move at exactly 1.2 / 2.2 / 6 m/s. Crawl (all fours) stays in the FBX but is not blended with upright gaits.
+            Idle = "Idle_Breathe", Sneak = "Sneak_Creep", Walk = "Walk_Stalk", Run = "Run_Sprint",
+            LocomotionSpeeds = new Vector3(1.2f, 2.2f, 6f),
+            Listen = "Search_Listen", Alert = "Scream", Attack = "Attack_Swipe", Hit = "Hit_React", Death = "Death",
+            Looping = new[] { "Idle_Breathe", "Idle_Spasm", "Crawl", "Sneak_Creep", "Walk_Stalk", "Run_Sprint", "Search_Listen" },
+            AttackSeconds = 1.4f, HitSeconds = 0.9f, AlertSeconds = 1.6f,   // clips are 3.0 / 2.1 / 4.4 s
+            // Procedural skin, talons and mouth baked into one 2048 atlas (one material for every mesh).
             Materials = new[]
             {
-                new AgentMaterialBuilder.MaterialDef { Name = "Listener_Skin", FbxMaterials = new[] { "ECHO_Skin", "ECHO_MouthInterior" },
-                                                       TexturePrefix = "Listener", NormalStrength = 1.6f, Smoothness = 1f },
-                new AgentMaterialBuilder.MaterialDef { Name = "Listener_Teeth", FbxMaterials = new[] { "ECHO_Keratin" },
-                                                       Color = new Color(0.72f, 0.65f, 0.5f), Smoothness = 0.55f },
-                new AgentMaterialBuilder.MaterialDef { Name = "Listener_Eye", FbxMaterials = new[] { "ECHO_Eye" },
-                                                       Color = new Color(0.02f, 0.01f, 0.01f), Smoothness = 0.95f,
-                                                       Emission = new Color(0.35f, 0.03f, 0.02f) },
+                new AgentMaterialBuilder.MaterialDef { Name = "Listener_Skin", FbxMaterials = new[] { "Listener_Skin" },
+                                                       TexturePrefix = "Listener", NormalStrength = 1.2f, Smoothness = 1f },
             },
         };
 
@@ -205,6 +213,10 @@ namespace Echo.EditorTools
 
             importer.animationType = ModelImporterAnimationType.Generic;   // creature rig, not a Mixamo humanoid
             importer.importAnimation = true;
+            // Default reduction (0.5 deg / 0.5 %) lets planted feet creep; keep the keys close to the source.
+            importer.animationCompression = ModelImporterAnimationCompression.KeyframeReduction;
+            importer.animationRotationError = 0.1f;
+            importer.animationPositionError = 0.1f;
             var source = importer.defaultClipAnimations;
             var clips = new ModelImporterClipAnimation[source.Length];
             for (int i = 0; i < source.Length; i++)
@@ -290,9 +302,9 @@ namespace Echo.EditorTools
             tree.blendParameter = "Speed";
             tree.useAutomaticThresholds = false;
             tree.AddChild(Clip(spec.Idle), 0f);
-            tree.AddChild(Clip(spec.Sneak), 1.2f);
-            tree.AddChild(Clip(spec.Walk), 2.2f);
-            tree.AddChild(Clip(spec.Run), 5f);
+            tree.AddChild(Clip(spec.Sneak), spec.LocomotionSpeeds.x);
+            tree.AddChild(Clip(spec.Walk), spec.LocomotionSpeeds.y);
+            tree.AddChild(Clip(spec.Run), spec.LocomotionSpeeds.z);
             sm.defaultState = loco;
             loco.writeDefaultValues = true;
 
