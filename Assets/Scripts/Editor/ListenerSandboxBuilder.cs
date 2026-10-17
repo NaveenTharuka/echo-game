@@ -24,6 +24,7 @@ namespace Echo.EditorTools
         public const string ScenePath = "Assets/Scenes/Sandbox/Sandbox_Listener.unity";
         public const string TrackerScenePath = "Assets/Scenes/Sandbox/Sandbox_Tracker.unity";
         public const string AmbusherScenePath = "Assets/Scenes/Sandbox/Sandbox_Ambusher.unity";
+        public const string MimicScenePath = "Assets/Scenes/Sandbox/Sandbox_Mimic.unity";
         const string PlayerSourceScene = "Assets/Scenes/Sandbox/Sandbox_Interaction.unity";
         static readonly Vector3 PlayerSpawn = new(9f, 0f, -6f);
         static readonly Vector3 AgentHome = new(-9f, 0f, 3f);
@@ -36,6 +37,19 @@ namespace Echo.EditorTools
 
         [MenuItem("ECHO/Agents/Ambusher/2. Build Sandbox Scene")]
         static void BuildAmbusherMenu() { if (CanBuild()) Build(AgentAssetBuilder.Ambusher, AmbusherScenePath); }
+
+        /// The Mimic only manipulates hunters, so its sandbox also gets a Listener (east room) for it to lure.
+        [MenuItem("ECHO/Agents/Mimic/2. Build Sandbox Scene (with a Listener)")]
+        static void BuildMimicMenu()
+        {
+            if (!CanBuild()) return;
+            Build(AgentAssetBuilder.Mimic, MimicScenePath);
+            var listener = AssetDatabase.LoadAssetAtPath<GameObject>(AgentAssetBuilder.Listener.PrefabPath);
+            if (listener == null) listener = AgentAssetBuilder.Build(AgentAssetBuilder.Listener);
+            var hunter = (GameObject)PrefabUtility.InstantiatePrefab(listener);
+            hunter.transform.SetPositionAndRotation(new Vector3(9f, 0f, 6f), Quaternion.Euler(0f, -90f, 0f));
+            EditorSceneManager.SaveScene(hunter.scene, MimicScenePath);
+        }
 
         static bool CanBuild() => !EditorApplication.isPlayingOrWillChangePlaymode &&
                                   EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo();

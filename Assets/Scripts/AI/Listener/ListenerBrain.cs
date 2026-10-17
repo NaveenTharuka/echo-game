@@ -97,7 +97,7 @@ namespace Echo.AI
                 case State.Suspicious:
                     if (stateTime > suspiciousWait)
                     {
-                        if (targetPriority >= 0.1f) BeginInvestigate(AgentMotor.Gait.Sneak);
+                        if (targetPriority >= ListenerPriority.InvestigateCutoff) BeginInvestigate(AgentMotor.Gait.Sneak);
                         else { hasTarget = false; Enter(State.Idle); }
                     }
                     break;

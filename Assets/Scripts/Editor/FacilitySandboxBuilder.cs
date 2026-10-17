@@ -21,7 +21,7 @@ namespace Echo.EditorTools
     ///   3. NavMesh baked with the door leaves left out (agents open doors themselves)
     ///   4. NavGraph: nodes sampled from the NavMesh every ~6 m (only what is reachable from the spawn),
     ///      a node pair on each door (Door.sideA/sideB), zones per room, auto-link, auto-tags
-    ///   5. Systems (audio, music, debug overlay, sound rings, HearingVisualizer) + Listener, Tracker, Ambusher
+    ///   5. Systems (audio, music, debug overlay, sound rings, HearingVisualizer) + Listener, Tracker, Ambusher, Mimic
     public static class FacilitySandboxBuilder
     {
         public const string ScenePath = "Assets/Scenes/Sandbox/Sandbox_AllAgents.unity";
@@ -58,6 +58,7 @@ namespace Echo.EditorTools
         static readonly Vector3 ListenerHome = new(50f, -6f, 31f);
         static readonly Vector3 AmbusherHome = new(75f, -12f, 26f);
         static readonly Vector3 TrackerHome = new(54f, -24f, 78f);
+        static readonly Vector3 MimicHome = new(102f, -14f, 22f);      // hides in containment, projects its voice
 
         [MenuItem("ECHO/Agents/All Agents/Build Facility Sandbox (copy of SampleScene)")]
         static void BuildMenu()
@@ -156,6 +157,7 @@ namespace Echo.EditorTools
             Place(agents, AgentAssetBuilder.Listener, ListenerHome, 90f);
             Place(agents, AgentAssetBuilder.Ambusher, AmbusherHome, 0f);
             Place(agents, AgentAssetBuilder.Tracker, TrackerHome, 90f);
+            Place(agents, AgentAssetBuilder.Mimic, MimicHome, -90f);
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             var nodes = graph.GetComponentsInChildren<NavNode>();
