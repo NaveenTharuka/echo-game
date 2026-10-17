@@ -9,6 +9,8 @@ namespace Echo.AI
     {
         public const float SwitchFactor = 1.25f;
         public const float RecencyTau = 8f;
+        /// Below this priority a calm Listener only turns its head (Suspicious) and does not go (the Mimic models it).
+        public const float InvestigateCutoff = 0.1f;
 
         public static float TypeWeight(SoundType t) => t switch
         {
