@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Echo.AI;
-using Echo.Player;
 using Echo.Sound;
+using StarterAssets;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -13,7 +13,7 @@ namespace Echo.UI
     /// (SILENT / QUIET / NOISY / LOUD) and a red "HEARD" flash when a creature actually perceived that sound.
     ///
     /// Reads ground truth only (SoundBus.Emitted with Source == Player, and each agent's Hearing.Heard) - UI may, the AI
-    /// never does. Builds its own overlay canvas; one is created automatically in any scene that has a PlayerNoise, so no
+    /// never does. Builds its own overlay canvas; one is created automatically in any scene with the first-person player, so no
     /// scene needs editing. Thrown decoys are Environment sounds, so they do not move the meter (they are not the player).
     public class PlayerNoiseMeter : MonoBehaviour
     {
@@ -69,7 +69,7 @@ namespace Echo.UI
         static void EnsureMeter()
         {
             if (!AutoCreate || FindFirstObjectByType<PlayerNoiseMeter>() != null) return;
-            if (FindFirstObjectByType<PlayerNoise>() == null) return;     // menus, tests: no player, no meter
+            if (FindFirstObjectByType<FirstPersonController>() == null) return;   // menus, tests: no player, no meter
             new GameObject("PlayerNoiseMeter").AddComponent<PlayerNoiseMeter>();
         }
 
