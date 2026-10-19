@@ -27,6 +27,8 @@ namespace Echo.Sound
         public float EffectiveSensitivity => sensitivity * (1f + alertBoost * Mathf.Clamp01(Alertness));
 
         readonly List<PerceivedSound> inbox = new();
+        /// Raised for every sound this ear actually perceives (debug views, e.g. HearingVisualizer).
+        public event System.Action<PerceivedSound> Heard;
         public bool HasUrgent { get; private set; }
 
         void OnEnable() => SoundBus.Register(this);
@@ -54,6 +56,7 @@ namespace Echo.Sound
                 PositionError = err, Loudness = loud, TimeHeard = Time.time
             });
             if (loud >= urgentLoudness) HasUrgent = true;
+            Heard?.Invoke(inbox[inbox.Count - 1]);
         }
 
         public void Drain(List<PerceivedSound> into)

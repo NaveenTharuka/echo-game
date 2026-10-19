@@ -15,6 +15,10 @@ namespace Echo.AI
         public float sneakSpeed = 1.2f, walkSpeed = 2.2f, runSpeed = 5f;
         public float waypointRadius = 0.8f;
         public float stuckTimeout = 2.5f;
+        [Tooltip("Slow down while the body still faces away from the way it is going, so the agent turns into a path " +
+                 "instead of gliding sideways (the walk cycle only matches forward movement).")]
+        public bool slowWhileTurning = true;
+        [Range(0.05f, 1f)] public float minTurnSpeedFactor = 0.25f;
 
         /// Set by the brain to express this agent's preferences (see each agent).
         public AStar.CostModifier CostModifier;
@@ -102,6 +106,7 @@ namespace Echo.AI
         {
             if (!IsMoving) { if (hasLook) FaceTowards(lookTarget); return; }
             if (nav.pathPending) return;
+            if (slowWhileTurning) ScaleSpeedForTurn();
             if (Time.time < doorWaitUntil) { ResetProgress(); return; }
 
             bool last = idx >= nodePath.Count;
@@ -123,6 +128,16 @@ namespace Echo.AI
 
             if (nav.remainingDistance < bestRemaining - 0.2f) { bestRemaining = nav.remainingDistance; lastProgressTime = Time.time; }
             else if (Time.time - lastProgressTime > stuckTimeout) { Stop(); FailedFlag = true; }
+        }
+
+        /// Full gait speed when facing the steering direction, down to minTurnSpeedFactor at 90 degrees or more.
+        void ScaleSpeedForTurn()
+        {
+            Vector3 want = nav.desiredVelocity; want.y = 0f;
+            float k = 1f;
+            if (want.sqrMagnitude > 0.01f)
+                k = Mathf.Clamp(Vector3.Dot(transform.forward, want.normalized), minTurnSpeedFactor, 1f);
+            nav.speed = SpeedFor(CurrentGait) * k;
         }
 
         static bool TryGetDoor(int a, int b, out Door door)
