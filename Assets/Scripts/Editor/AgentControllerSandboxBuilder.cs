@@ -104,14 +104,14 @@ namespace Echo.EditorTools
             }
 
             var systems = new GameObject("Systems");
-            systems.AddComponent<AgentDebugOverlay>().visible = false;   // F2 / F3 / F4 time scale
+            systems.AddComponent<AgentDebugOverlay>().visible = false;   // F2 / F3 / F4 time scale (F1 overlay, F5 hearing)
 
             var agent = BuildAgent(agents, wps[0], wpTransforms);
 
             Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
             EditorSceneManager.SaveScene(scene, ScenePath);
             Selection.activeGameObject = agent;
-            Debug.Log($"[AgentControllerSandbox] Built {ScenePath}: {n} nodes ({reachable} connected), {wps.Length} waypoints.");
+            Debug.Log($"[AgentControllerSandbox] Built {ScenePath}: {n} nodes ({reachable} connected), {wps.Length} waypoints. Play: F7 path lines, F8 smoothing, 1/2/3 gait.");
         }
 
         /// Capsule stand-in for an agent prefab: same NavMeshAgent settings as AgentAssetBuilder, a "nose" to show

@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 
 namespace Echo.AI
 {
-    /// Draws the agent's current path in the Game view (demo / report screenshots). F5 toggles it for all agents.
+    /// Draws the agent's current path in the Game view (demo / report screenshots). F7 toggles it for all agents.
     ///   grey   = raw A* node path (rings on the nodes),
     ///   green  = smoothed curve the motor follows,
     ///   yellow = pure-pursuit look-ahead point.
@@ -42,7 +42,7 @@ namespace Echo.AI
         void Update()
         {
             var k = Keyboard.current;
-            if (k != null && k.f5Key.wasPressedThisFrame && toggledFrame != Time.frameCount)
+            if (k != null && k.f7Key.wasPressedThisFrame && toggledFrame != Time.frameCount)
             { toggledFrame = Time.frameCount; Visible = !Visible; }
         }
 
