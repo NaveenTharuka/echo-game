@@ -112,8 +112,11 @@ namespace Echo.EditorTools
             var library = AssetDatabase.LoadAssetAtPath<SoundLibrary>(SoundLibraryBuilder.LibraryPath);
             systems.AddComponent<AudioService>().library = library != null ? library : SoundLibraryBuilder.Build();
             systems.AddComponent<SoundDebug>();
-            systems.AddComponent<AgentDebugOverlay>();
-            systems.AddComponent<HearingVisualizer>().material = FacilitySandboxBuilder.HearingMaterial();
+            // Debug views start hidden in the real level (F1 / F5 show them).
+            systems.AddComponent<AgentDebugOverlay>().visible = false;
+            var hearing = systems.AddComponent<HearingVisualizer>();
+            hearing.material = FacilitySandboxBuilder.HearingMaterial();
+            hearing.visible = false;
 
             bool playerOk = !swapPlayer || ListenerSandboxBuilder.CopyPlayer(spawn, spawnRot);
             FacilitySandboxBuilder.FixGroundLayers(env);

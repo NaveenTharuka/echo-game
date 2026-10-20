@@ -37715,7 +37715,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7e4ffc8b52dd8e741ad1e6bb6ddec649, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Echo.AI.HearingVisualizer
-  visible: 1
+  visible: 0
   cellSize: 1.2
   refreshInterval: 0.5
   walkIntensity: 0.15
@@ -37734,7 +37734,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0f1e38e2131ca5d4b96614c8b6e6487a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Echo.AI.AgentDebugOverlay
-  visible: 1
+  visible: 0
 --- !u!114 &853219491
 MonoBehaviour:
   m_ObjectHideFlags: 0
