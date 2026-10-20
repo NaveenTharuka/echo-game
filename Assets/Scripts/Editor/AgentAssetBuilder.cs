@@ -48,8 +48,10 @@ namespace Echo.EditorTools
             /// Model fixes: uniform scale for the Model child (e.g. a 6 m export), meshes to hide (props in the FBX).
             public float ModelScale = 1f;
             public string[] HiddenMeshes = new string[0];
-            /// Seconds the one-shot states should take; long clips are sped up to fit (0 = natural length).
+            /// Seconds the one-shot states should take; clips are sped up (or slowed, max 2x) to fit (0 = natural length).
             public float AttackSeconds, HitSeconds, AlertSeconds;
+            /// Optional frame range per clip (first, last), e.g. one punch out of a take that repeats it.
+            public Dictionary<string, Vector2Int> ClipFrames = new();
             /// URP materials built from Assets/Art/Characters/<Name>/Textures and swapped in for the FBX materials.
             public AgentMaterialBuilder.MaterialDef[] Materials = new AgentMaterialBuilder.MaterialDef[0];
             /// Optional: material name shown when badly hurt (AgentDamageLook swaps Materials[0] -> this).
@@ -59,6 +61,8 @@ namespace Echo.EditorTools
             /// Blend-tree thresholds (m/s) for Sneak / Walk / Run. Must equal the speed each clip's planted feet move at,
             /// or the body slides over the floor.
             public Vector3 LocomotionSpeeds = new(1.2f, 2.2f, 5f);
+            /// AgentAnimatorBridge.footSlideFix: speeds up locomotion above the run threshold (LocomotionSpeeds.z).
+            public bool FootSlideFix;
             public string Folder => Path.GetDirectoryName(Path.GetDirectoryName(ModelPath)).Replace('\\', '/');
         }
 
@@ -108,9 +112,16 @@ namespace Echo.EditorTools
             ModelScale = 0.4f,
             HiddenMeshes = new[] { "Ball-mesh" },
             Idle = "Idle1", Sneak = "Walk2", Walk = "Walk1", Run = "Run1",
+            // Sneak = Walk2's measured foot speed (1.4). Walk stays at the walk gait (2.2): lower, it would blend in Run1,
+            // whose 6 strides per loop are out of step with Walk1's 4. Run 5 tested best with footSlideFix (4.4 / 5.5 slide more).
+            LocomotionSpeeds = new Vector3(1.4f, 2.2f, 5f),
             Listen = "Telepathic-loop", Alert = "Telepathic", Attack = "Punch1", Hit = "Get-damage", Death = "Death",
             Looping = new[] { "Idle1", "Idle2", "Idle3", "Walk1", "Walk2", "Run1", "Telepathic-loop", "Throw-loop" },
-            AttackSeconds = 1.4f, HitSeconds = 0.8f, AlertSeconds = 1.2f,
+            // Punch1 repeats one 0.8 s punch 6 times: keep the first (frames 0-20, peak at frame 6).
+            // 1.6 s puts the peak at ~0.48 s, on AgentBody's 0.5 s claw hit.
+            ClipFrames = new() { ["Punch1"] = new Vector2Int(0, 20) },
+            AttackSeconds = 1.6f, HitSeconds = 0.8f, AlertSeconds = 1.2f,
+            FootSlideFix = true,   // run slide 15 -> 10 %
             ClickClipsFolder = "Assets/Audio/Agents/Tracker",
             ClickClipsPrefix = "Tracker_Click_",
             // Original textures of the "Demon Horror Creature with Weapon" asset (Models/1/Demon_tex), resized to 2048.
@@ -141,6 +152,7 @@ namespace Echo.EditorTools
             Listen = "searching", Alert = "scream", Attack = "attack", Hit = "hit", Death = "deth",
             Looping = new[] { "idol", "idol2", "idol_breathing", "walking", "running", "searching", "muscules" },
             AlertSeconds = 1.2f, HitSeconds = 0.8f,
+            FootSlideFix = true,   // run slide 56 -> 43 % (clips are slower than the thresholds)
             // Almost silent (guide §5.6): heavy breathing only within 4 m, and only while it lies in wait (AmbusherBrain).
             BreathingLoopPath = "Assets/Audio/Agents/Ambusher/Ambusher_Breathing_Loop.wav",
             BreathingMaxDistance = 4f,
@@ -259,6 +271,7 @@ namespace Echo.EditorTools
             {
                 var c = source[i];
                 c.name = CleanName(c.takeName);
+                if (spec.ClipFrames.TryGetValue(c.name, out var range)) { c.firstFrame = range.x; c.lastFrame = range.y; }
                 c.loopTime = Array.IndexOf(spec.Looping, c.name) >= 0;
                 c.loopPose = false;
                 c.lockRootRotation = c.lockRootHeightY = c.lockRootPositionXZ = false;
@@ -382,7 +395,7 @@ namespace Echo.EditorTools
         {
             var s = sm.AddState(name, pos);
             s.motion = clip;
-            if (seconds > 0f && clip.length > seconds) s.speed = clip.length / seconds;   // fit long clips to gameplay timing
+            if (seconds > 0f) s.speed = Mathf.Max(0.5f, clip.length / seconds);   // fit clips to gameplay timing (slow down at most 2x)
             return s;
         }
 
@@ -459,6 +472,8 @@ namespace Echo.EditorTools
 
                 var bridge = root.AddComponent<AgentAnimatorBridge>();
                 bridge.animator = animator;
+                bridge.footSlideFix = spec.FootSlideFix;
+                bridge.blendTopSpeed = spec.LocomotionSpeeds.z;   // fastest clip in the blend tree
 
                 // Touch sense
                 var touch = new GameObject("ContactSense");
