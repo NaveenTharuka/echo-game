@@ -26,11 +26,11 @@ namespace Echo.EditorTools
     {
         public const string ScenePath = "Assets/Scenes/Sandbox/Sandbox_AllAgents.unity";
         const string SourceScene = "Assets/Scenes/SampleScene.unity";
-        const float NodeSpacing = 6f;
+        internal const float NodeSpacing = 6f;
 
         // Rooms of SampleScene (world-space boxes, see Docs/Map/ECHO_floor_plan_v2.png). Order matters where they
         // touch: ZoneVolume.ZoneAt returns the first match.
-        static readonly (string id, Vector3 min, Vector3 max)[] Zones =
+        internal static readonly (string id, Vector3 min, Vector3 max)[] Zones =
         {
             ("Stairwell",          new(20f, -8f, 57f),   new(28f, 6f, 71f)),
             ("EntranceCorridor_W", new(20f, -8f, 45f),   new(33f, 0f, 57f)),
@@ -84,36 +84,11 @@ namespace Echo.EditorTools
                 if (root.name is "PlayerCapsule" or "InteractionHUD") Object.DestroyImmediate(root);
 
             // 2. Sound occluders.
-            int moved = 0;
-            foreach (var rootName in new[] { "Build", "Horror_Props" })
-            {
-                var root = GameObject.Find(rootName);
-                if (root == null) continue;
-                foreach (var c in root.GetComponentsInChildren<Collider>(true))
-                {
-                    if (c.isTrigger || c.gameObject.layer != 0) continue;
-                    if (c.attachedRigidbody != null && !c.attachedRigidbody.isKinematic) continue;   // loose props
-                    if (c.GetComponentInParent<IInteractable>() != null && c.GetComponentInParent<Door>() == null) continue;
-                    c.gameObject.layer = env; moved++;
-                }
-            }
+            int moved = MoveOccludersToEnvironment(env);
 
             // 3. NavMesh (before the player and agents exist, so they are not baked in as obstacles).
             var doors = Object.FindObjectsByType<Door>(FindObjectsSortMode.None);
-            var leafColliders = doors.Where(d => d.leaf != null)
-                                     .SelectMany(d => d.leaf.GetComponentsInChildren<Collider>(true))
-                                     .Where(c => c.enabled).ToList();
-            foreach (var c in leafColliders) c.enabled = false;
-            var surface = new GameObject("NavMeshSurface").AddComponent<NavMeshSurface>();
-            surface.collectObjects = CollectObjects.All;
-            surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
-            surface.layerMask = (1 << 0) | (1 << 8) | (1 << env);
-            surface.overrideVoxelSize = true; surface.voxelSize = 0.1f;   // 1.5 m doorways survive the agent radius
-            surface.BuildNavMesh();
-            foreach (var c in leafColliders) c.enabled = true;
-            string navPath = ScenePath.Replace(".unity", "_NavMesh.asset");
-            AssetDatabase.DeleteAsset(navPath);
-            AssetDatabase.CreateAsset(surface.navMeshData, navPath);
+            BakeNavMesh(env, doors, ScenePath.Replace(".unity", "_NavMesh.asset"));
 
             if (!NavMesh.SamplePosition(spawn, out var spawnHit, 4f, NavMesh.AllAreas))
             { Debug.LogError("[FacilitySandbox] spawn is not on the NavMesh"); return; }
@@ -167,11 +142,51 @@ namespace Echo.EditorTools
                       $"{Count(nodes, NodeTag.Junction)} junction, player copied: {playerOk}.");
         }
 
+        // ------------------------------------------------------------------ level helpers
+
+        /// Solid static colliders under Build / Horror_Props on Default -> Environment (they block sound).
+        internal static int MoveOccludersToEnvironment(int env)
+        {
+            int moved = 0;
+            foreach (var rootName in new[] { "Build", "Horror_Props" })
+            {
+                var root = GameObject.Find(rootName);
+                if (root == null) continue;
+                foreach (var c in root.GetComponentsInChildren<Collider>(true))
+                {
+                    if (c.isTrigger || c.gameObject.layer != 0) continue;
+                    if (c.attachedRigidbody != null && !c.attachedRigidbody.isKinematic) continue;   // loose props
+                    if (c.GetComponentInParent<IInteractable>() != null && c.GetComponentInParent<Door>() == null) continue;
+                    c.gameObject.layer = env; moved++;
+                }
+            }
+            return moved;
+        }
+
+        /// New NavMeshSurface baked with the door leaves left out; the data is saved to navPath.
+        internal static NavMeshSurface BakeNavMesh(int env, Door[] doors, string navPath)
+        {
+            var leafColliders = doors.Where(d => d.leaf != null)
+                                     .SelectMany(d => d.leaf.GetComponentsInChildren<Collider>(true))
+                                     .Where(c => c.enabled).ToList();
+            foreach (var c in leafColliders) c.enabled = false;
+            var surface = new GameObject("NavMeshSurface").AddComponent<NavMeshSurface>();
+            surface.collectObjects = CollectObjects.All;
+            surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+            surface.layerMask = (1 << 0) | (1 << 8) | (1 << env);
+            surface.overrideVoxelSize = true; surface.voxelSize = 0.1f;   // 1.5 m doorways survive the agent radius
+            surface.BuildNavMesh();
+            foreach (var c in leafColliders) c.enabled = true;
+            AssetDatabase.DeleteAsset(navPath);
+            AssetDatabase.CreateAsset(surface.navMeshData, navPath);
+            return surface;
+        }
+
         // ------------------------------------------------------------------ graph helpers
 
         /// NavMesh triangle centres bucketed into NodeSpacing cells per ~3 m of height; one point per cell (the one
         /// nearest the cell centre), kept only if walkable from the spawn and pushed away from walls.
-        static IEnumerable<Vector3> SampleNavMesh(Vector3 from)
+        internal static IEnumerable<Vector3> SampleNavMesh(Vector3 from)
         {
             var tri = NavMesh.CalculateTriangulation();
             var best = new Dictionary<(int, int, int), (Vector3 p, float d)>();
@@ -210,7 +225,7 @@ namespace Echo.EditorTools
         }
 
         /// One Doorway node on each side of the door leaf, wired into Door.sideA/sideB so the motor opens it.
-        static IEnumerable<NavNode> DoorNodes(Transform parent, Door door, ref int n)
+        internal static IEnumerable<NavNode> DoorNodes(Transform parent, Door door, ref int n)
         {
             var result = new List<NavNode>();
             var box = door.leafCollider != null ? door.leafCollider : door.GetComponentInChildren<BoxCollider>();
@@ -259,7 +274,7 @@ namespace Echo.EditorTools
 
         /// Auto-link may join two nodes whose straight walk crosses a door leaf; only the door's own pair may do
         /// that (it carries the Door, so the motor opens it).
-        static int CutLinksThroughDoors(NavGraph graph, Door[] doors)
+        internal static int CutLinksThroughDoors(NavGraph graph, Door[] doors)
         {
             int cut = 0;
             var leaves = doors.Where(d => d.leafCollider != null)
@@ -289,7 +304,7 @@ namespace Echo.EditorTools
         ///   Junction   = 4+ rooms around a node (its own + its neighbours')
         ///   AmbushSpot = per doorway, the node of the same room 3-9 m away that hugs a wall most (waits beside the way in)
         ///   Corridor / Room = narrow (< 1 m to the NavMesh edge) or not
-        static void AutoTag(NavGraph graph, List<NavNode> doorNodes)
+        internal static void AutoTag(NavGraph graph, List<NavNode> doorNodes)
         {
             var nodes = graph.GetComponentsInChildren<NavNode>();
             var clearance = nodes.ToDictionary(x => x, x =>
@@ -328,7 +343,7 @@ namespace Echo.EditorTools
         static float EdgeDistance(Vector3 p, Vector3 min, Vector3 max)
             => Mathf.Min(Mathf.Min(p.x - min.x, max.x - p.x), Mathf.Min(p.z - min.z, max.z - p.z));
 
-        static NavNode NewNode(Transform parent, ref int n, Vector3 pos, NodeTag tag)
+        internal static NavNode NewNode(Transform parent, ref int n, Vector3 pos, NodeTag tag)
         {
             var go = new GameObject($"Node_{n++:000}");
             go.transform.SetParent(parent, false);
@@ -338,9 +353,9 @@ namespace Echo.EditorTools
             return node;
         }
 
-        static int Count(NavNode[] nodes, NodeTag t) => nodes.Count(x => (x.tags & t) != 0);
+        internal static int Count(NavNode[] nodes, NodeTag t) => nodes.Count(x => (x.tags & t) != 0);
 
-        static void Zone(Transform parent, string id, Vector3 min, Vector3 max)
+        internal static void Zone(Transform parent, string id, Vector3 min, Vector3 max)
         {
             var go = new GameObject("Zone_" + id);
             go.transform.SetParent(parent, false);
@@ -353,7 +368,7 @@ namespace Echo.EditorTools
 
         // ------------------------------------------------------------------ scene helpers
 
-        static void Place(Transform parent, AgentAssetBuilder.AgentSpec spec, Vector3 home, float yaw)
+        internal static void Place(Transform parent, AgentAssetBuilder.AgentSpec spec, Vector3 home, float yaw)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(spec.PrefabPath);
             if (prefab == null) { Debug.LogError($"[FacilitySandbox] {spec.PrefabPath} missing"); return; }
@@ -364,7 +379,7 @@ namespace Echo.EditorTools
         }
 
         /// Floors that became Environment must still count as ground for the Starter Assets controller.
-        static void FixGroundLayers(int env)
+        internal static void FixGroundLayers(int env)
         {
             var player = GameObject.Find("PlayerCapsule");
             if (player == null) return;
@@ -378,7 +393,7 @@ namespace Echo.EditorTools
             }
         }
 
-        static Material HearingMaterial()
+        internal static Material HearingMaterial()
         {
             const string path = "Assets/Art/Materials/Sandbox/HearingArea.mat";
             var m = AssetDatabase.LoadAssetAtPath<Material>(path);
