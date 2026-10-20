@@ -188,6 +188,7 @@ namespace Echo.EditorTools
             // The startle clip "Alert" stays in the FBX, unused for now.
             Listen = "Listen", Alert = "Call", Attack = "Attack", Hit = "Hit", Death = "Death",
             Looping = new[] { "Idle", "Sneak", "Walk", "Run", "Listen" },
+            AttackSeconds = 1.6f,   // claw strike is at 0.44 s of 1.4 s -> lands on AgentBody's 0.5 s hit
             StepClipsFolder = "Assets/Audio/Agents/Listener", StepClipsPrefix = "Listener_Step_",
             StepPitch = new Vector2(1.05f, 1.2f),   // light, bony feet: the Listener's steps pitched up
             Materials = new[]

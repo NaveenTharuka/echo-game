@@ -392,6 +392,15 @@ MonoBehaviour:
   stuckTimeout: 2.5
   slowWhileTurning: 1
   minTurnSpeedFactor: 0.25
+  smoothPath: 1
+  lookAhead: 1.5
+  cornerRadius: 1.5
+  smoothRotation: 1
+  turnRateStill: 420
+  turnRateAtRun: 260
+  turnInPlace: 1
+  turnInPlaceAngle: 60
+  maxTurnInPlaceTime: 0.4
 --- !u!114 &5038329439064590326
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -477,6 +486,10 @@ MonoBehaviour:
   animator: {fileID: 9033337278364594001}
   matchPlaybackToSpeed: 0
   referenceSpeed: 2.2
+  turnReference: 180
+  footSlideFix: 0
+  blendTopSpeed: 5.5
+  locomotionState: Locomotion
 --- !u!1001 &193471684296866347
 PrefabInstance:
   m_ObjectHideFlags: 0
