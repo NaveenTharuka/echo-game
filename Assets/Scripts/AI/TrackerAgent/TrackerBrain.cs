@@ -36,7 +36,7 @@ namespace Echo.AI
 
         public TrackerDecider Decider => decider;
         public override string DisplayName => "TRACKER";
-        public override string StateName => decider == null ? "NoGraph" : decider.State.ToString();
+        public override string StateName => !IsAlive ? "Dead" : decider == null ? "NoGraph" : decider.State.ToString();
         public override float AlertLevel => decider == null ? 0f : decider.State switch
         {
             TrackerState.Attack => 1f,
