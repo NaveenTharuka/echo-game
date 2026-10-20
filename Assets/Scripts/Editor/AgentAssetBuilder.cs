@@ -144,7 +144,7 @@ namespace Echo.EditorTools
             ControllerPath = "Assets/Art/Characters/Ambusher/Animations/Ambusher.controller",
             PrefabPath = "Assets/Prefabs/Agents/Ambusher.prefab",
             BrainType = typeof(AmbusherBrain),
-            HearingSensitivity = 1.4f, RunSpeed = 6.5f,     // best ears; short explosive lunges (guide §12.1)
+            HearingSensitivity = 1.4f, RunSpeed = 5.5f,     // best ears; short explosive lunges (guide §12.1). Run slide: 5.0 0 %, 5.5 2 %, 6.0 10 %, 6.5 17 %
             AvoidancePriority = 55,
             AttackDamage = 50f,
             ModelScale = 0.8f,             // 3.0 m brute -> 2.4 m
@@ -152,7 +152,9 @@ namespace Echo.EditorTools
             Listen = "searching", Alert = "scream", Attack = "attack", Hit = "hit", Death = "deth",
             Looping = new[] { "idol", "idol2", "idol_breathing", "walking", "running", "searching", "muscules" },
             AlertSeconds = 1.2f, HitSeconds = 0.8f,
-            FootSlideFix = true,   // run slide 56 -> 43 % (clips are slower than the thresholds)
+            // Real clip speeds at scale 0.8: walking 1.74, running 3.0 m/s (sneak + walk share the walking clip).
+            LocomotionSpeeds = new Vector3(1.74f, 1.75f, 3f),
+            FootSlideFix = true,   // playback up to 1.8x keeps the feet planted up to ~5.4 m/s
             // Almost silent (guide §5.6): heavy breathing only within 4 m, and only while it lies in wait (AmbusherBrain).
             BreathingLoopPath = "Assets/Audio/Agents/Ambusher/Ambusher_Breathing_Loop.wav",
             BreathingMaxDistance = 4f,
