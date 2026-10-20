@@ -48,6 +48,7 @@ namespace Echo.AI
         Vector3 playerEst, strikeTarget; float playerEstTime = -999f; int ambushNode = -1;
         readonly Dictionary<int, float> lastUsed = new();
         Dictionary<string, float> lastPass = new();
+        string predictedFrom;   // zone the player was in when the ambush was chosen
         float pursueUntil = -1f; int lunges;
 
         // Read by the Mimic (guide §11) - keep these three stable.
@@ -57,7 +58,7 @@ namespace Echo.AI
 
         public RouteModel Model => model;
         public override string DisplayName => "AMBUSHER";
-        public override string StateName => model == null ? "NoGraph" : state.ToString();
+        public override string StateName => !IsAlive ? "Dead" : model == null ? "NoGraph" : state.ToString();
         public override float AlertLevel => Time.time < pursueUntil ? 0.9f : state switch { State.Attack => 1f, State.Wait => 0.5f, State.MoveToAmbush => 0.35f, _ => 0.1f };
         public override float CurrentInterest => confidence;
         public override string DebugText => model == null ? "waiting for NavGraph + zones" :
@@ -111,6 +112,7 @@ namespace Echo.AI
                     bool predictionBroken = model.CurrentZone != null && lastPass.Count > 0 &&
                                             Time.time - playerEstTime < 3f &&
                                             !lastPass.ContainsKey(model.CurrentZone) &&
+                                            model.CurrentZone != predictedFrom &&     // still where it was heard: not off route
                                             model.CurrentZone != NavGraph.Instance.Node(ambushNode).zone;
                     if (stateTime > waitTimeout) Relocate(AgentMotor.Gait.Sneak, $"nobody came in {waitTimeout:0} s");
                     else if (predictionBroken) Relocate(AgentMotor.Gait.Sneak, $"player heard in {model.CurrentZone}, off the predicted route");
@@ -158,7 +160,7 @@ namespace Echo.AI
                 if (score > bestScore) { bestScore = score; best = n; }
             }
             if (best < 0) return false;
-            ambushNode = best; lastUsed[best] = Time.time;
+            ambushNode = best; lastUsed[best] = Time.time; predictedFrom = model.CurrentZone;
             return true;
         }
 
