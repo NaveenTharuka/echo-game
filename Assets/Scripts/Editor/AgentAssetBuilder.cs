@@ -536,6 +536,7 @@ namespace Echo.EditorTools
                     clicks.source = AudioChild(root.transform, "Clicks", 1.8f, 1f, 14f);
                 }
 
+                AgentAudioSetup.Apply(root, spec.Name);   // own steps + voice (ECHO > Audio > Apply Agent Sounds)
                 return PrefabUtility.SaveAsPrefabAsset(root, spec.PrefabPath);
             }
             finally

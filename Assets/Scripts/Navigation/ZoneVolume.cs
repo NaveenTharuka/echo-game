@@ -25,5 +25,16 @@ namespace Echo.Navigation
         }
 
         public static IEnumerable<ZoneVolume> All => all;
+
+        /// The room's box in world space (presentation uses it for reverb).
+        public Bounds Bounds => box != null ? box.bounds : new Bounds(transform.position, Vector3.zero);
+
+        /// The zone containing p, or null.
+        public static ZoneVolume At(Vector3 p)
+        {
+            foreach (var z in all)
+                if (z.box.bounds.Contains(p)) return z;
+            return null;
+        }
     }
 }

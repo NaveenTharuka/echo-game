@@ -55,7 +55,11 @@ namespace Echo.Player
         [Tooltip("Exertion above this makes audible panting.")]
         public float pantThreshold = 0.55f;
         public float breathVolume = 0.55f;
+        [Tooltip("Override clips. Empty = the recorded tiers from the SoundLibrary (Breath_Calm/Heavy/Exhausted_In/Out), " +
+                 "or synthesised breaths if the library has none.")]
         public AudioClip[] inhaleClips, exhaleClips;
+        [Tooltip("Exertion where breathing switches from the calm to the heavy / from the heavy to the exhausted recordings.")]
+        public Vector2 breathTiers = new(0.4f, 0.72f);
 
         /// 0 empty .. 1 full.
         public float Stamina { get; private set; } = 1f;
@@ -78,6 +82,8 @@ namespace Echo.Player
         AudioSource breathSource;
         float regenAt, breathRate = 0.25f, nextPantNoise, footOffset;
         bool wasGrounded = true, holdCrouch, toggledCrouch, inhaled;
+        AudioClip[][] tierIn, tierOut;
+        PlayerCameraMotion cameraMotion;
         readonly Collider[] overlap = new Collider[8];
 
         // ------------------------------------------------------------------ auto-attach
@@ -128,8 +134,6 @@ namespace Echo.Player
             crouchHold.canceled += _ => holdCrouch = false;
 
             breathSource = BuildBreathSource();
-            if (inhaleClips == null || inhaleClips.Length == 0) inhaleClips = BreathSynth.Make(true, 3);
-            if (exhaleClips == null || exhaleClips.Length == 0) exhaleClips = BreathSynth.Make(false, 3);
         }
 
         void OnEnable()
@@ -273,13 +277,40 @@ namespace Echo.Player
         void Breathe(bool inhale)
         {
             if (breathSource == null) return;
+            LoadBreathTiers();
+            // Fear makes you breathe hard too (presentation: the camera's fear value, never the AI's).
+            if (cameraMotion == null) TryGetComponent(out cameraMotion);
+            float fear = cameraMotion != null ? cameraMotion.Fear : 0f;
+            float e = Mathf.Max(Exertion, fear * 0.65f);
             // Barely there at rest, clearly audible from ~35 % exertion, gasping when exhausted.
-            float loud = Mathf.Clamp01((Exertion - 0.15f) / 0.85f);
+            float loud = Mathf.Clamp01((e - 0.1f) / 0.9f);
             if (loud <= 0.02f) return;
-            var clips = inhale ? inhaleClips : exhaleClips;
+            int tier = e < breathTiers.x ? 0 : e < breathTiers.y ? 1 : 2;
+            var clips = inhale ? tierIn[tier] : tierOut[tier];
             if (clips == null || clips.Length == 0) return;
-            breathSource.pitch = Random.Range(0.94f, 1.06f) * Mathf.Lerp(1f, 1.12f, Exertion);
-            breathSource.PlayOneShot(clips[Random.Range(0, clips.Length)], breathVolume * loud * (inhale ? 0.85f : 1f));
+            breathSource.pitch = Random.Range(0.97f, 1.03f);
+            // The recordings already get louder tier by tier; the calm ones need a lift to be heard at all.
+            float tierGain = tier == 0 ? 1.6f : tier == 1 ? 1.1f : 1f;
+            breathSource.PlayOneShot(clips[Random.Range(0, clips.Length)],
+                                     breathVolume * Mathf.Lerp(0.35f, 1f, loud) * tierGain * (inhale ? 0.9f : 1f));
+        }
+
+        /// Recorded tiers from the SoundLibrary once AudioService exists; the inspector override or synthesised
+        /// breaths otherwise.
+        void LoadBreathTiers()
+        {
+            if (tierIn != null && tierOut != null) return;   // (not a bool: arrays don't survive a domain reload)
+            tierIn = new AudioClip[3][]; tierOut = new AudioClip[3][];
+            string[] names = { "Calm", "Heavy", "Exhausted" };
+            bool overridden = inhaleClips != null && inhaleClips.Length > 0 && exhaleClips != null && exhaleClips.Length > 0;
+            AudioClip[] synthIn = null, synthOut = null;
+            for (int t = 0; t < 3; t++)
+            {
+                tierIn[t] = overridden ? inhaleClips : SoundLibrary.ActiveSet($"Breath_{names[t]}_In");
+                tierOut[t] = overridden ? exhaleClips : SoundLibrary.ActiveSet($"Breath_{names[t]}_Out");
+                if (tierIn[t].Length == 0) tierIn[t] = synthIn ??= BreathSynth.Make(true, 3);
+                if (tierOut[t].Length == 0) tierOut[t] = synthOut ??= BreathSynth.Make(false, 3);
+            }
         }
 
         AudioSource BuildBreathSource()
@@ -289,6 +320,7 @@ namespace Echo.Player
             go.transform.SetParent(cam != null ? cam.transform : transform, false);
             var s = go.AddComponent<AudioSource>();
             s.playOnAwake = false; s.spatialBlend = 0f; s.loop = false;
+            s.reverbZoneMix = 0.3f;   // a little of the room around your own breath (AudioReverbDirector keeps it)
             return s;
         }
     }

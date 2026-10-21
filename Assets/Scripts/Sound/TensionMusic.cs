@@ -24,7 +24,7 @@ namespace Echo.Sound
         {
             if (!clip) return null;
             var s = gameObject.AddComponent<AudioSource>();
-            s.clip = clip; s.loop = true; s.spatialBlend = 0f; s.volume = 0f; s.playOnAwake = false;
+            s.clip = clip; s.loop = true; s.spatialBlend = 0f; s.volume = 0f; s.playOnAwake = false; s.reverbZoneMix = 0f;
             s.Play();
             return s;
         }

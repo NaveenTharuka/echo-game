@@ -239,6 +239,15 @@ MonoBehaviour:
   openCutoff: 22000
   blockedCutoff: 1200
   blockedVolume: 0.6
+  buriedCutoff: 550
+  buriedVolume: 0.32
+  nearDistance: 6
+  farDistance: 55
+  airCutoff: 2400
+  leakRouteRatio: 1.9
+  leakCutoff: 3200
+  reverbSend: {x: 0.55, y: 1.1}
+  trackWhenSilent: 1
 --- !u!1 &8989081691447177653
 GameObject:
   m_ObjectHideFlags: 0
@@ -471,15 +480,12 @@ MonoBehaviour:
   runSpeed: 3.5
   source: {fileID: 2500072994363456285}
   clips:
-  - {fileID: 8300000, guid: 43896056d508fae42aaea2cf195c4be6, type: 3}
-  - {fileID: 8300000, guid: 401f659572514ee49bd7d5fd4bdb2308, type: 3}
-  - {fileID: 8300000, guid: b1a9909d346cdd845a978f283b256b77, type: 3}
-  - {fileID: 8300000, guid: 62f1aabb6a1ade6488281cfdeb4da67f, type: 3}
-  - {fileID: 8300000, guid: ad3b33d04ebe05347a7ba10077245fd0, type: 3}
-  - {fileID: 8300000, guid: 0bfd913f26c91f243a7124c393485d31, type: 3}
-  - {fileID: 8300000, guid: c3b2b972ec8ffd44f8b52bfdff45335a, type: 3}
-  - {fileID: 8300000, guid: 7b00f709f4b51eb479df909675a4fa7e, type: 3}
-  pitch: {x: 1.05, y: 1.2}
+  - {fileID: 8300000, guid: 60d7c3872bf67104aa6ad2bb0faceef3, type: 3}
+  - {fileID: 8300000, guid: db2114f4011f11444b772e08158442dd, type: 3}
+  - {fileID: 8300000, guid: 49ab7180fa17f394c8b61634ea39a1c4, type: 3}
+  - {fileID: 8300000, guid: 1a416eeddb58baa48bf6159e7986d1f2, type: 3}
+  - {fileID: 8300000, guid: d825c460cf2d3104eabad9c022568844, type: 3}
+  pitch: {x: 0.95, y: 1.1}
   walkVolume: 0.6
   runVolume: 1
 --- !u!114 &7833803040636602524

@@ -43,7 +43,10 @@ namespace Echo.Gameplay
         [Tooltip("How urgent a wail sounds to an agent (0..1): high enough that hunters run, not stroll.")]
         public float alarmLoudness = 0.9f;
         public float alarmError = 6f;
-        public float sirenVolume = 0.55f;
+        [Tooltip("The siren at the Lab (3D: muffled by walls, distant down the corridors).")]
+        public float sirenVolume = 0.9f;
+        [Tooltip("The same alarm over the facility's PA, everywhere (2D), so it is never lost entirely.")]
+        public float paVolume = 0.22f;
 
         public Stage Current { get; private set; } = Stage.FindWay;
         public bool HasPass { get; private set; }
@@ -53,7 +56,9 @@ namespace Echo.Gameplay
 
         Text objectiveLabel, bigLabel;
         CanvasGroup bigGroup;
-        AudioSource siren;
+        AudioSource siren, sirenLab;
+        AudioOcclusion sirenLabOcclusion;
+        float sirenFade = 1f;
         float startTime, alarmUntil, alarmStart, nextWail;
         Transform player;
 
@@ -133,7 +138,11 @@ namespace Echo.Gameplay
                 Wail();
             }
             if (siren != null && siren.isPlaying && Time.time >= alarmUntil)
-                siren.volume = Mathf.MoveTowards(siren.volume, 0f, Time.deltaTime * 0.2f);
+            {
+                sirenFade = Mathf.MoveTowards(sirenFade, 0f, Time.deltaTime * 0.2f);
+                siren.volume = paVolume * sirenFade;
+                if (sirenLabOcclusion != null) sirenLabOcclusion.SetBaseVolume(sirenVolume * sirenFade);
+            }
 
             if (HasMedicine && player != null && exit != null &&
                 Vector3.Distance(player.position, exit.position) <= exitRadius)
@@ -158,6 +167,7 @@ namespace Echo.Gameplay
         {
             Current = Stage.Won;
             if (siren != null) siren.Stop();
+            if (sirenLab != null) sirenLab.Stop();
             if (player != null)
                 foreach (var b in player.GetComponents<Behaviour>())
                     if (b is StarterAssets.FirstPersonController || b is PlayerInteractor || b is PlayerDeath) b.enabled = false;
@@ -239,19 +249,45 @@ namespace Echo.Gameplay
 
         // ------------------------------------------------------------------ siren
 
+        /// The recorded siren winds up once, then loops (SoundLibrary sets Alarm_Siren_Start / Alarm_Siren_Loop);
+        /// synthesised two-tone if the library has none. Two sources: the siren itself at the Lab (3D) and the PA (2D).
         void StartSiren()
         {
+            var loopClips = SoundLibrary.ActiveSet("Alarm_Siren_Loop");
+            var startClips = SoundLibrary.ActiveSet("Alarm_Siren_Start");
+            var loop = loopClips.Length > 0 ? loopClips[0] : SirenClip();
+            var start = startClips.Length > 0 ? startClips[0] : null;
             if (siren == null)
             {
                 siren = gameObject.AddComponent<AudioSource>();
-                siren.clip = SirenClip();
-                siren.loop = true; siren.spatialBlend = 0f;   // the alarm is everywhere in the facility
+                siren.spatialBlend = 0f; siren.reverbZoneMix = 0f;   // the PA: everywhere in the facility
+                var go = new GameObject("Siren (Lab)");
+                go.transform.position = (medicine != null ? medicine.transform.position : labDoor.DoorwayCenter) + Vector3.up * 2f;
+                sirenLab = go.AddComponent<AudioSource>();
+                sirenLab.spatialBlend = 1f; sirenLab.dopplerLevel = 0f;
+                sirenLab.rolloffMode = AudioRolloffMode.Logarithmic; sirenLab.minDistance = 8f; sirenLab.maxDistance = 140f;
+                go.AddComponent<AudioLowPassFilter>();
+                sirenLabOcclusion = go.AddComponent<AudioOcclusion>();
+                sirenLabOcclusion.farDistance = 90f;                 // a siren cuts through: keep it brighter, longer
             }
-            siren.volume = sirenVolume;
-            siren.Play();
+            sirenFade = 1f;
+            siren.volume = paVolume;
+            sirenLabOcclusion.SetBaseVolume(sirenVolume);
+            double t0 = AudioSettings.dspTime + 0.05;
+            foreach (var s in new[] { siren, sirenLab })
+            {
+                s.loop = true; s.clip = loop;
+                if (start != null)
+                {
+                    s.PlayOneShot(start);                              // wind-up, then the loop takes over
+                    s.PlayScheduled(t0 + start.length - 0.35);
+                }
+                else s.Play();
+            }
+            sirenLabOcclusion.Snap();
         }
 
-        /// Two-tone wail with a hard, distorted edge (no siren recording in the project).
+        /// Two-tone wail with a hard, distorted edge (fallback when the library has no siren recording).
         static AudioClip SirenClip()
         {
             const int rate = 44100; const float seconds = 3f;

@@ -23,6 +23,7 @@ MonoBehaviour:
     - {fileID: 8300000, guid: 97e71008bf2eb8d40bf62bb24d8e4a2c, type: 3}
     - {fileID: 8300000, guid: 458a3d63c246b294f89d82e4c1e2f9f0, type: 3}
     - {fileID: 8300000, guid: 9d9e8de0426e10c49b2797ec4d9e88c4, type: 3}
+    farClips: []
     volume: 0.45
     pitch: {x: 0.92, y: 1.08}
     minDistance: 1
@@ -38,15 +39,30 @@ MonoBehaviour:
     - {fileID: 8300000, guid: 3900c77a119a88045b4aa75fb41bdd37, type: 3}
     - {fileID: 8300000, guid: 735b5640f93a188499d0c1b21804a9ef, type: 3}
     - {fileID: 8300000, guid: 16a6c2721877b554cb0b03a23e0e116f, type: 3}
+    farClips: []
     volume: 0.6
     pitch: {x: 0.92, y: 1.08}
     minDistance: 1
     maxDistance: 18
     group: {fileID: 0}
+  - type: 2
+    clips:
+    - {fileID: 8300000, guid: 567035f892ee7c14eafcaf19599f5ae2, type: 3}
+    - {fileID: 8300000, guid: 1ab0fd5b36f52194f90367dcbb803200, type: 3}
+    - {fileID: 8300000, guid: 09195510da3bba941ad8552fe0de564a, type: 3}
+    farClips: []
+    volume: 0.5
+    pitch: {x: 0.92, y: 1.08}
+    minDistance: 1
+    maxDistance: 12
+    group: {fileID: 0}
   - type: 3
     clips:
     - {fileID: 8300000, guid: 00ff7bdab0054eb4aa73672aee296359, type: 3}
     - {fileID: 8300000, guid: 54149dc131dc5214082184bbdaba27eb, type: 3}
+    farClips:
+    - {fileID: 8300000, guid: 2274c837c65e20a44aca2ccad097691e, type: 3}
+    - {fileID: 8300000, guid: 884108aceb2398b46b94084ed33a5705, type: 3}
     volume: 0.7
     pitch: {x: 0.92, y: 1.08}
     minDistance: 1
@@ -54,7 +70,11 @@ MonoBehaviour:
     group: {fileID: 0}
   - type: 4
     clips:
-    - {fileID: 8300000, guid: b423be37f1edf814dbbde5cbef358761, type: 3}
+    - {fileID: 8300000, guid: 783d2095b76b36249950a56c7d831b49, type: 3}
+    - {fileID: 8300000, guid: 2ac405da189d6b74880dda690b995d56, type: 3}
+    farClips:
+    - {fileID: 8300000, guid: 44a45583b508a744dacd54791bb4f2c7, type: 3}
+    - {fileID: 8300000, guid: 4edef8185e1edcd4b835b249a67716d6, type: 3}
     volume: 1
     pitch: {x: 0.97, y: 1.03}
     minDistance: 3
@@ -62,11 +82,8 @@ MonoBehaviour:
     group: {fileID: 0}
   - type: 5
     clips:
-    - {fileID: 8300000, guid: c52e9c595590b654aa3e34f683275504, type: 3}
-    - {fileID: 8300000, guid: fce5a9f007231f045a84b4d226cbb88e, type: 3}
-    - {fileID: 8300000, guid: 6c3f9e9b3c4ffb2459b95feeeafd7e40, type: 3}
-    - {fileID: 8300000, guid: 37987bb04ddad7349a5a967bc4134324, type: 3}
-    - {fileID: 8300000, guid: a1c6f8cda6a06bf4cbe28d985aa6da2a, type: 3}
+    - {fileID: 8300000, guid: dfefba07371f4e442b43d316ffaa0eb6, type: 3}
+    farClips: []
     volume: 0.6
     pitch: {x: 0.92, y: 1.08}
     minDistance: 1
@@ -83,6 +100,16 @@ MonoBehaviour:
     - {fileID: 8300000, guid: 0dde80c933b88dc4bab88a6b3ddbc842, type: 3}
     - {fileID: 8300000, guid: d10862433ca0bb743b815876edfc110a, type: 3}
     - {fileID: 8300000, guid: ac652c877908ac94d95199646f537376, type: 3}
+    farClips:
+    - {fileID: 8300000, guid: 3d422deebcbbc40479a3e7334bd83fbb, type: 3}
+    - {fileID: 8300000, guid: e57a93930c2622c48957e4e2efd0459e, type: 3}
+    - {fileID: 8300000, guid: 850272c89fcf63b489e9579bea768aa6, type: 3}
+    - {fileID: 8300000, guid: 853cc3d4a1bf8cf4ab245493c69b2647, type: 3}
+    - {fileID: 8300000, guid: 70adfaa01beba434d9553562edc3b012, type: 3}
+    - {fileID: 8300000, guid: 0805071f9cc20064cbcf73ae003cae4b, type: 3}
+    - {fileID: 8300000, guid: 3dde3d9bdd9b29045ba8712d82e103f6, type: 3}
+    - {fileID: 8300000, guid: f876d1379f314c04d8e105a1fdbb6a40, type: 3}
+    - {fileID: 8300000, guid: 26f474ab2698de84dbfe55d7b8fb4e6f, type: 3}
     volume: 0.7
     pitch: {x: 0.92, y: 1.08}
     minDistance: 1.5
@@ -94,6 +121,11 @@ MonoBehaviour:
     - {fileID: 8300000, guid: 6c430a60ee1cd92438667397b2c54983, type: 3}
     - {fileID: 8300000, guid: aa848c8f276309648924710aa32edf4a, type: 3}
     - {fileID: 8300000, guid: 2bd67e280519c914dba37dc1bc11b8fd, type: 3}
+    farClips:
+    - {fileID: 8300000, guid: 2765ddf56ec83724b81b451712aaf0b8, type: 3}
+    - {fileID: 8300000, guid: 6afed67d2a422854399a80404ae5630e, type: 3}
+    - {fileID: 8300000, guid: 68512c818835ea040b8f86abbcff147b, type: 3}
+    - {fileID: 8300000, guid: 72f18df315849b242ba0c593865578c2, type: 3}
     volume: 0.8
     pitch: {x: 0.92, y: 1.08}
     minDistance: 2
@@ -108,6 +140,14 @@ MonoBehaviour:
     - {fileID: 8300000, guid: 0c06bade4c15d2d43b926ce15fd3ab4e, type: 3}
     - {fileID: 8300000, guid: bac95e8ed0e74f14580f4eaa996de286, type: 3}
     - {fileID: 8300000, guid: 8504b9f4314590f4c824acb183ae03a2, type: 3}
+    farClips:
+    - {fileID: 8300000, guid: 789a6f8e713eed6409db6c039336fdb8, type: 3}
+    - {fileID: 8300000, guid: cb57482ddddb6714e961c9e8587a6d5e, type: 3}
+    - {fileID: 8300000, guid: 3193c65f5188fa24dbf3c243eea31c53, type: 3}
+    - {fileID: 8300000, guid: 70c03159cb706a34db897958074a1f71, type: 3}
+    - {fileID: 8300000, guid: 1d94bcab115dd7740a4143a55b595931, type: 3}
+    - {fileID: 8300000, guid: 4aad2de5531f6bc4795460b9a2737c46, type: 3}
+    - {fileID: 8300000, guid: b08a9049d5ecc0b41a260b81ba42327a, type: 3}
     volume: 0.8
     pitch: {x: 0.92, y: 1.08}
     minDistance: 1.5
@@ -117,6 +157,9 @@ MonoBehaviour:
     clips:
     - {fileID: 8300000, guid: ce883aced51b6d74e8b4f5fb813c3ce7, type: 3}
     - {fileID: 8300000, guid: b5e6a38f138d2cc4a8291628eaae55ed, type: 3}
+    farClips:
+    - {fileID: 8300000, guid: c14da13c4e8dbbb40817555c97af59e7, type: 3}
+    - {fileID: 8300000, guid: c25a106bbf55b314aba6e5c11d6dcd2e, type: 3}
     volume: 0.9
     pitch: {x: 0.92, y: 1.08}
     minDistance: 2
@@ -127,6 +170,10 @@ MonoBehaviour:
     - {fileID: 8300000, guid: 6e2665370d6f5414da562668874cd830, type: 3}
     - {fileID: 8300000, guid: 0ea8cdf688ad6244b98ca1ea4db99f3e, type: 3}
     - {fileID: 8300000, guid: 74b2bdeaf9ee594468156fddb85579b7, type: 3}
+    farClips:
+    - {fileID: 8300000, guid: c27927711ffe26a46934bc2ffa1279d0, type: 3}
+    - {fileID: 8300000, guid: cdedebdec838faf498d35ac9e46fcb8a, type: 3}
+    - {fileID: 8300000, guid: 995148c4e5065244095d2a97ef1366fb, type: 3}
     volume: 0.7
     pitch: {x: 0.92, y: 1.08}
     minDistance: 1.5
@@ -138,6 +185,7 @@ MonoBehaviour:
     - {fileID: 8300000, guid: aa4b3db38fc53aa44bb7f96d59db8b92, type: 3}
     - {fileID: 8300000, guid: a645afe426391a04982e689ed3afa867, type: 3}
     - {fileID: 8300000, guid: ef26b74a7d93cb54689427c212459d95, type: 3}
+    farClips: []
     volume: 0.4
     pitch: {x: 0.92, y: 1.08}
     minDistance: 2
@@ -146,6 +194,8 @@ MonoBehaviour:
   - type: 12
     clips:
     - {fileID: 8300000, guid: 1d3d83ea98dec554b9c17bd9c74bc552, type: 3}
+    farClips:
+    - {fileID: 8300000, guid: 4c4f5edd8fbc1c84caef04e3ce3c605d, type: 3}
     volume: 0.9
     pitch: {x: 0.92, y: 1.08}
     minDistance: 3
@@ -155,6 +205,7 @@ MonoBehaviour:
     clips:
     - {fileID: 8300000, guid: 2de89b9cc7f6ef84f9018daa85fea1e5, type: 3}
     - {fileID: 8300000, guid: d40ee601b1b19484ba8bde616bb761d1, type: 3}
+    farClips: []
     volume: 0.6
     pitch: {x: 0.92, y: 1.08}
     minDistance: 1
@@ -167,8 +218,79 @@ MonoBehaviour:
     - {fileID: 8300000, guid: a46b5ce5f85ca8f4c9226ff5551a6254, type: 3}
     - {fileID: 8300000, guid: 2acf44ae6011fe74599c95a23590e6ae, type: 3}
     - {fileID: 8300000, guid: 10209f64a16b0874ca74be257ffba0e4, type: 3}
+    farClips:
+    - {fileID: 8300000, guid: d98b5c88af044d64385ee57832e0448a, type: 3}
+    - {fileID: 8300000, guid: 0e090fff1beb5fb41846ca2b5553dc6b, type: 3}
+    - {fileID: 8300000, guid: eb104076fbc5c884d8cd9fc52653b0f5, type: 3}
+    - {fileID: 8300000, guid: 372782cb81dd46e42ae04236aac1bd07, type: 3}
+    - {fileID: 8300000, guid: 2a77f1b3850a17242ac0f9e1515c103a, type: 3}
     volume: 0.9
     pitch: {x: 0.92, y: 1.08}
     minDistance: 2
     maxDistance: 25
     group: {fileID: 0}
+  sets:
+  - name: Alarm_Siren_Loop
+    clips:
+    - {fileID: 8300000, guid: 8dc32deacfb74ac4995e5128514289db, type: 3}
+  - name: Alarm_Siren_Start
+    clips:
+    - {fileID: 8300000, guid: 8fee668efae30504fa9934bfed31e240, type: 3}
+  - name: Breath_Calm_In
+    clips:
+    - {fileID: 8300000, guid: 4e1a5046f115d514e8f7913641e8b258, type: 3}
+    - {fileID: 8300000, guid: 62b0bc4746edb5b4c8f1bd5d65388fbf, type: 3}
+    - {fileID: 8300000, guid: 78e29d97506d51b4e8a8e2a1aa73c864, type: 3}
+    - {fileID: 8300000, guid: ba6516c1337ca9949b83f8b037391f90, type: 3}
+    - {fileID: 8300000, guid: 60ce88fddf34c0f4fb5ae8f24f96852a, type: 3}
+    - {fileID: 8300000, guid: 61f5f047de316214d8304558dec969ed, type: 3}
+  - name: Breath_Calm_Out
+    clips:
+    - {fileID: 8300000, guid: 7a025afe6a3f30e4084e3dd75f52481c, type: 3}
+    - {fileID: 8300000, guid: c2b68f9bd6a044546b59c9ee1e24fd4d, type: 3}
+    - {fileID: 8300000, guid: 46bbfd133927bd7438414ee1b2d159e1, type: 3}
+    - {fileID: 8300000, guid: cfb84780292669040ba5437c7db3fec3, type: 3}
+    - {fileID: 8300000, guid: 3f29253ef894b2e4cae1022c791bf833, type: 3}
+    - {fileID: 8300000, guid: 42f60d86323b08045b208d2bf5205024, type: 3}
+  - name: Breath_Exhausted_In
+    clips:
+    - {fileID: 8300000, guid: 716fb97a8889d7b42a1c7a3c4138b717, type: 3}
+    - {fileID: 8300000, guid: 488782e3c0eabae45ad7d2a12b9eabd9, type: 3}
+    - {fileID: 8300000, guid: fa066406de39cbb42b2fb69ff7b8fbc9, type: 3}
+    - {fileID: 8300000, guid: b451920cbf026fe4f9d1cb182d61b5b7, type: 3}
+    - {fileID: 8300000, guid: 98b7e278b599c5d45b35380e68f8932f, type: 3}
+    - {fileID: 8300000, guid: 9803c1384e0902f4c891f0528d3f8047, type: 3}
+  - name: Breath_Exhausted_Out
+    clips:
+    - {fileID: 8300000, guid: 63d7d3e77f2adb143bd40ec2641d1d8d, type: 3}
+    - {fileID: 8300000, guid: 310a22a064295a3468b3866e24cec8b1, type: 3}
+    - {fileID: 8300000, guid: d087cc2a9cc2b0446b9afc321778034f, type: 3}
+    - {fileID: 8300000, guid: a21951a9aa12ab147baae5578f4121e7, type: 3}
+    - {fileID: 8300000, guid: 7e0e48a8d7d7c48408430096719ce53b, type: 3}
+    - {fileID: 8300000, guid: 0050ea34e461ca542a04ccf4d637f397, type: 3}
+  - name: Breath_Heavy_In
+    clips:
+    - {fileID: 8300000, guid: d21f8903f2b521849907740c72fb28a9, type: 3}
+    - {fileID: 8300000, guid: 047f1de0cf76cea4b9d9faa9338127eb, type: 3}
+    - {fileID: 8300000, guid: 12bc858cd8ec11649b66dcc5f50dff7f, type: 3}
+    - {fileID: 8300000, guid: 1ef5329ef9ae2c749aa34ce0355aa47c, type: 3}
+  - name: Breath_Heavy_Out
+    clips:
+    - {fileID: 8300000, guid: 94aeab7ecd882bf4d951bdb3089e0e50, type: 3}
+    - {fileID: 8300000, guid: 23275d3394275b04da06f9120190d04f, type: 3}
+    - {fileID: 8300000, guid: 066e6dab0aad636459cc53c487f9b1c9, type: 3}
+    - {fileID: 8300000, guid: 993a5ced5db1f34438bc98c29bba0d8c, type: 3}
+  - name: DryFire
+    clips:
+    - {fileID: 8300000, guid: 26b7b6adf75779f45bf317a614a76994, type: 3}
+    - {fileID: 8300000, guid: e9a6c7cb19b34b54a943d7488912f7c8, type: 3}
+    - {fileID: 8300000, guid: adc25e30a3168ee43a70e7447670f6cb, type: 3}
+  - name: Heartbeat_Calm_Loop
+    clips:
+    - {fileID: 8300000, guid: 11dcccfb67b4ecc439b50d97900db0a7, type: 3}
+  - name: Heartbeat_Fast_Loop
+    clips:
+    - {fileID: 8300000, guid: e0054e73581dd184ca84796a962f5766, type: 3}
+  - name: Heartbeat_Pound_Loop
+    clips:
+    - {fileID: 8300000, guid: 95f0bde1c6ada8e46aa58d93d1e75144, type: 3}
