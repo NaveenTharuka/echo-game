@@ -43,6 +43,30 @@ namespace Echo.EditorTools
         [MenuItem("ECHO/SampleScene/5. Add Mimic")]
         static void AddMimicMenu() { if (OpenScene()) AddAgent(AgentAssetBuilder.Mimic, MimicPost, -90f); }
 
+        [MenuItem("ECHO/SampleScene/6. Use Horror Music (TensionMusic)")]
+        static void UseTensionMusicMenu()
+        {
+            if (!OpenScene()) return;
+            var systems = GameObject.Find("Systems");
+            if (systems == null) { Debug.LogError("[SampleSceneSetup] run 1. Shared Setup first"); return; }
+            UseTensionMusic(systems);
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+            EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
+        }
+
+        /// Same horror music as the sandboxes: DarkDrone calm bed, HorrorDrone while an agent hunts.
+        /// The old synth BackgroundMusic is switched off (kept in the scene, not deleted).
+        static void UseTensionMusic(GameObject systems)
+        {
+            var old = GameObject.Find("BackgroundMusic");
+            if (old != null) old.SetActive(false);
+            if (!systems.TryGetComponent<TensionMusic>(out var music)) music = systems.AddComponent<TensionMusic>();
+            music.calmLoop = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/Music/DarkDrone_Loop.wav");
+            music.huntLoop = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/Music/HorrorDrone_Loop.wav");
+            Debug.Log($"[SampleSceneSetup] TensionMusic on Systems (calm {music.calmLoop != null}, hunt {music.huntLoop != null}), " +
+                      $"BackgroundMusic off: {old != null}.");
+        }
+
         static bool OpenScene()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode) return false;
@@ -107,8 +131,9 @@ namespace Echo.EditorTools
             int cut = FacilitySandboxBuilder.CutLinksThroughDoors(graph, doors);
             FacilitySandboxBuilder.AutoTag(graph, doorNodes);
 
-            // Systems. No TensionMusic: SampleScene has its own BackgroundMusic.
+            // Systems. Music = the sandboxes' TensionMusic (replaces SampleScene's BackgroundMusic).
             var systems = new GameObject("Systems");
+            UseTensionMusic(systems);
             var library = AssetDatabase.LoadAssetAtPath<SoundLibrary>(SoundLibraryBuilder.LibraryPath);
             systems.AddComponent<AudioService>().library = library != null ? library : SoundLibraryBuilder.Build();
             systems.AddComponent<SoundDebug>();
@@ -120,6 +145,7 @@ namespace Echo.EditorTools
 
             bool playerOk = !swapPlayer || ListenerSandboxBuilder.CopyPlayer(spawn, spawnRot);
             FacilitySandboxBuilder.FixGroundLayers(env);
+            FacilitySandboxBuilder.FixInteractMask(env);
             if (GameObject.Find("Agents") == null) new GameObject("Agents");
 
             EditorSceneManager.MarkSceneDirty(scene);
