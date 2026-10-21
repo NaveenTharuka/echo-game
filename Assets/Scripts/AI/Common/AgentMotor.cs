@@ -24,6 +24,15 @@ namespace Echo.AI
         public bool slowWhileTurning = true;
         [Range(0.05f, 1f)] public float minTurnSpeedFactor = 0.25f;
 
+        [Header("Chase (hunting)")]
+        [Tooltip("Run speed while hunting (Urgency >= chaseUrgency). 0 = runSpeed. Faster than the player's sprint (5.6): " +
+                 "a hunted player escapes by breaking the sound trail, not by holding Shift.")]
+        public float chaseSpeed = 0f;
+        public float chaseUrgency = 0.6f;
+        [Tooltip("While chasing: keeps more speed through turns and turns faster at a run.")]
+        [Range(0.05f, 1f)] public float chaseMinTurnSpeedFactor = 0.55f;
+        public float chaseTurnRate = 360f;
+
         [Header("Path smoothing")]
         [Tooltip("Follow the A* route as one curve with rounded corners instead of sharp node-to-node turns.")]
         public bool smoothPath = true;
@@ -45,6 +54,10 @@ namespace Echo.AI
         /// Set by the brain to express this agent's preferences (see each agent).
         public AStar.CostModifier CostModifier;
 
+        /// 0 calm .. 1 hunting. Set by AgentBrain from its AlertLevel every frame.
+        public float Urgency { get; set; }
+        /// Running flat out after prey.
+        public bool IsChasing => CurrentGait == Gait.Run && chaseSpeed > runSpeed && Urgency >= chaseUrgency;
         public bool IsMoving { get; private set; }
         public Vector3 Goal { get; private set; }
         public Gait CurrentGait { get; private set; }
@@ -82,7 +95,8 @@ namespace Echo.AI
             defaultAutoBraking = nav.autoBraking;
         }
 
-        public float SpeedFor(Gait g) => g == Gait.Run ? runSpeed : g == Gait.Walk ? walkSpeed : sneakSpeed;
+        public float SpeedFor(Gait g) => g == Gait.Run ? (chaseSpeed > runSpeed && Urgency >= chaseUrgency ? chaseSpeed : runSpeed)
+                                       : g == Gait.Walk ? walkSpeed : sneakSpeed;
 
         public bool MoveTo(Vector3 destination, Gait gait)
         {
@@ -139,6 +153,12 @@ namespace Echo.AI
             Stop();
             nav.Warp(position);
             ArrivedFlag = FailedFlag = false;
+        }
+
+        /// Attack lunge: moves the body by `delta` along the NavMesh this frame (no pathing; used during the wind-up).
+        public void Lunge(Vector3 delta)
+        {
+            if (nav != null && nav.isOnNavMesh) nav.Move(delta);
         }
 
         /// Keep turning towards `p` every frame while standing still (brains think at 5 Hz, too slow to turn).
@@ -410,7 +430,7 @@ namespace Echo.AI
             if (want.sqrMagnitude < 0.04f) { want = nav.velocity; want.y = 0f; }
             if (want.sqrMagnitude < 0.04f) return;
             float k = Mathf.Clamp01(nav.velocity.magnitude / Mathf.Max(runSpeed, 0.1f));
-            Rotate(want, Mathf.Lerp(turnRateStill, turnRateAtRun, k));
+            Rotate(want, Mathf.Lerp(turnRateStill, IsChasing ? Mathf.Max(turnRateAtRun, chaseTurnRate) : turnRateAtRun, k));
         }
 
         /// Full gait speed when facing the steering direction, down to minTurnSpeedFactor at 90 degrees or more.
@@ -419,7 +439,8 @@ namespace Echo.AI
             Vector3 want = nav.desiredVelocity; want.y = 0f;
             float k = 1f;
             if (want.sqrMagnitude > 0.01f)
-                k = Mathf.Clamp(Vector3.Dot(transform.forward, want.normalized), minTurnSpeedFactor, 1f);
+                k = Mathf.Clamp(Vector3.Dot(transform.forward, want.normalized),
+                                IsChasing ? chaseMinTurnSpeedFactor : minTurnSpeedFactor, 1f);
             nav.speed = SpeedFor(CurrentGait) * k;
         }
 

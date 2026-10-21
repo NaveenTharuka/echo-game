@@ -375,6 +375,8 @@ MonoBehaviour:
   minPositionError: 0.5
   urgentLoudness: 0.45
   alertBoost: 0.5
+  minCallError: 3
+  callLoudnessCap: 0.4
 --- !u!114 &4477660135106363506
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -394,6 +396,10 @@ MonoBehaviour:
   stuckTimeout: 2.5
   slowWhileTurning: 1
   minTurnSpeedFactor: 0.25
+  chaseSpeed: 6.2
+  chaseUrgency: 0.6
+  chaseMinTurnSpeedFactor: 0.55
+  chaseTurnRate: 360
   smoothPath: 1
   lookAhead: 1.5
   cornerRadius: 1.5
@@ -421,6 +427,10 @@ MonoBehaviour:
   windup: 0.5
   reach: 1.1
   hitRadius: 0.9
+  lungeRange: 3.4
+  lungeSpeed: 9
+  chargeSpeed: 4
+  chargeLead: 1.5
   playerMask:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -471,6 +481,9 @@ MonoBehaviour:
     searchHold: 2
     searchMaxTime: 15
     searchMaxNodes: 6
+  minTargetHold: 1.5
+  muchBetterRatio: 1.5
+  ignoreOffMeshTargets: 1
 --- !u!114 &8866901835356395815
 MonoBehaviour:
   m_ObjectHideFlags: 0

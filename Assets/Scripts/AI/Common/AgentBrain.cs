@@ -42,6 +42,7 @@ namespace Echo.AI
         {
             if (Body.IsDead) return;
             Hearing.Alertness = AlertLevel;                      // hunting agents listen harder
+            Motor.Urgency = AlertLevel;                          // ... and run harder (chase speed)
             if (Time.time < nextThink && !Hearing.HasUrgent) return;
             nextThink = Time.time + thinkInterval * Random.Range(0.85f, 1.15f); // de-synchronise agents
             NewSounds.Clear();

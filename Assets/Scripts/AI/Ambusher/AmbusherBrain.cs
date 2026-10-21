@@ -24,7 +24,7 @@ namespace Echo.AI
         [Tooltip("Lunge at a sound this close while waiting (m).")]
         public float strikeDistance = 5f;
         [Tooltip("Reflex strike in any state for a precise sound this close (m).")]
-        public float closeStrike = 2.2f;
+        public float closeStrike = 3f;
         public float waitTimeout = 25f, minConfidence = 0.35f, minScore = 0.2f, playerSpeedGuess = 2.5f;
         [Tooltip("Commit only after the player was heard leaving the current zone this many times (decayed). " +
                  "With few neighbour zones the uniform prior alone already passes minConfidence.")]
