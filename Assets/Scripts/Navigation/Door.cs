@@ -1,7 +1,8 @@
 using System;
-using System.Reflection;
+using System.Collections.Generic;
 using Echo.Interaction;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.Events;
 
 namespace Echo.Navigation
@@ -16,14 +17,15 @@ namespace Echo.Navigation
     ///
     /// Frozen members read by NavGraph / AgentMotor: sideA, sideB, isOpen, isLocked, SetOpen, OpenDelay.
     [DisallowMultipleComponent]
+    [DefaultExecutionOrder(-100)]   // attach to the graph before agents plan in their Update
     public class Door : MonoBehaviour, IInteractable
     {
         public enum State { Closed, Opening, Open, Closing, Locked }
 
         [Header("Waypoint graph (guide §6.4)")]
-        [Tooltip("The two NavNodes this door connects. Typed Component until M4's NavNode exists; change to NavNode then.")]
-        public Component sideA;
-        public Component sideB;
+        [Tooltip("The two NavNodes this door connects (NavGraph puts the door on that edge).")]
+        public NavNode sideA;
+        public NavNode sideB;
 
         [Header("Leaf")]
         [Tooltip("Kinematic, interpolated Rigidbody on the moving leaf (child of this object).")]
@@ -100,7 +102,7 @@ namespace Echo.Navigation
         /// Where the leaf's Rigidbody sits when fully closed, in world space.
         public Vector3 ClosedLeafPosition => transform.TransformPoint(closedLocalPos);
 
-        /// Raised whenever isOpen or isLocked changes (debug views; NavGraph is notified directly).
+        /// Raised whenever isOpen or isLocked changes (debug views; NavGraph is notified directly first).
         public static event Action<Door> Changed;
 
         const string PromptOpen = "Open", PromptClose = "Close", PromptLocked = "Locked", PromptBlocked = "Blocked";
@@ -111,8 +113,8 @@ namespace Echo.Navigation
         float amount, distance, nextCloseCheck;
         bool closeRequested, closeByAgent, pendingLock;
         GameObject closeBy;
-        Vector3 closedLocalPos, closedLocalCenter, localDir;
-        Quaternion leafRotation;
+        Vector3 closedLocalPos, closedLocalCenter, localDir, closedSize;
+        Quaternion leafRotation, closedLocalRotation;
         MaterialPropertyBlock block;
 
         void Awake()
@@ -135,6 +137,8 @@ namespace Echo.Navigation
             closedLocalPos = transform.InverseTransformPoint(leaf.position);
             leafRotation = leaf.rotation;
             closedLocalCenter = transform.InverseTransformPoint(leafCollider.transform.TransformPoint(leafCollider.center));
+            closedLocalRotation = Quaternion.Inverse(transform.rotation) * leafCollider.transform.rotation;
+            closedSize = Vector3.Scale(leafCollider.size, leafCollider.transform.lossyScale);
             distance = slideDistance > 0f ? slideDistance : LeafExtentAlong(transform.TransformDirection(localDir));
 
             state = startLocked ? State.Locked : State.Closed;
@@ -178,7 +182,7 @@ namespace Echo.Navigation
             state = State.Closed;
             UpdateStatusLight();
             onUnlocked?.Invoke();
-            Changed?.Invoke(this);
+            NotifyChanged();
         }
 
         /// Locks now if closed, otherwise as soon as it finishes closing.
@@ -189,7 +193,7 @@ namespace Echo.Navigation
             state = State.Locked;
             UpdateStatusLight();
             onLocked?.Invoke();
-            Changed?.Invoke(this);
+            NotifyChanged();
         }
 
         // ---- motion ---------------------------------------------------------------------------
@@ -268,10 +272,130 @@ namespace Echo.Navigation
             return false;
         }
 
+        /// Open/close and lock/unlock both change the graph (A* cost, sound distances, route caches keyed on Version).
         void NotifyChanged()
         {
-            NavGraphBridge.DoorChanged();
+            var graph = NavGraph.Instance;
+            if (graph != null) graph.OnDoorChanged();
             Changed?.Invoke(this);
+        }
+
+        // ---- graph attachment -------------------------------------------------------------------
+        // NavGraph.Build puts a door only on its sideA-sideB edge, but Auto-Link also joins node pairs whose straight
+        // walk passes through the doorway without touching those nodes (22 such edges in Sandbox_Tracker's one
+        // doorway). Every enabled door therefore attaches itself to EVERY edge whose walk crosses its closed-leaf box,
+        // at startup and after each rebuild, so all of them respect open / closed / locked (A* cost, sound penalty,
+        // AgentMotor opening). "Walk" = the straight segment, else the NavMesh path between the nodes: Auto-Link
+        // accepts a pair whose path bends through a doorway (<= 1.25 x straight) although the straight line runs
+        // through the wall beside it. A rebuild is detected by NavGraph replacing its adjacency lists.
+
+        static readonly List<Door> enabledDoors = new();
+        static NavGraph attachedGraph;
+        static IReadOnlyList<Edge> attachedProbe;
+        static bool attachDirty;
+        static int attachCheckedFrame = -1;
+        static bool warnedAdjacency;
+        static readonly Vector3[] corners = new Vector3[32];
+        static NavMeshPath walk;
+
+        /// Graph edges (both directions) this door gates after the last attach.
+        public int AttachedEdges { get; private set; }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            enabledDoors.Clear(); attachedGraph = null; attachedProbe = null;
+            attachDirty = false; attachCheckedFrame = -1; warnedAdjacency = false;
+        }
+
+        void OnEnable() { if (!enabledDoors.Contains(this)) enabledDoors.Add(this); attachDirty = true; }
+        void OnDisable() { enabledDoors.Remove(this); attachDirty = true; }
+
+        void Update()
+        {
+            if (attachCheckedFrame == Time.frameCount) return;   // once per frame for all doors
+            attachCheckedFrame = Time.frameCount;
+            EnsureAttached();
+        }
+
+        /// Re-attaches all enabled doors if the graph was (re)built or a door appeared/disappeared since the last attach.
+        public static void EnsureAttached()
+        {
+            var graph = NavGraph.Instance;
+            if (graph == null || graph.Count == 0) return;
+            if (!attachDirty && graph == attachedGraph && ReferenceEquals(graph.Neighbours(0), attachedProbe)) return;
+            attachDirty = false; attachedGraph = graph; attachedProbe = graph.Neighbours(0);
+            AttachAll(graph);
+        }
+
+        static void AttachAll(NavGraph graph)
+        {
+            foreach (var d in enabledDoors) d.AttachedEdges = 0;
+            bool changed = false;
+            for (int i = 0; i < graph.Count; i++)
+            {
+                if (!(graph.Neighbours(i) is List<Edge> edges))
+                {
+                    if (!warnedAdjacency) Debug.LogError("[Door] NavGraph adjacency is not a List<Edge>: doors gate only their sideA-sideB edge.");
+                    warnedAdjacency = true;
+                    return;
+                }
+                Vector3 a = graph.Position(i);
+                for (int k = 0; k < edges.Count; k++)
+                {
+                    var e = edges[k];
+                    Door gate = FindGate(a, graph.Position(e.To));
+                    if (gate == null)
+                    {
+                        // A gate left by a door that is now disabled would keep its stale state: drop it.
+                        if (e.Door != null && !e.Door.isActiveAndEnabled) { edges[k] = new Edge(e.To, e.Length, null); changed = true; }
+                        continue;
+                    }
+                    gate.AttachedEdges++;
+                    if (e.Door == gate) continue;                   // Build already put it there (sideA-sideB)
+                    edges[k] = new Edge(e.To, e.Length, gate);
+                    changed = true;
+                }
+            }
+            if (changed) graph.OnDoorChanged();                     // sound distances (closed-door penalty) + Version
+        }
+
+        /// The enabled door whose doorway the walk a -> b passes through, or null. The NavMesh path is only computed when
+        /// the straight segment misses every door (once per edge per rebuild, not per frame).
+        static Door FindGate(Vector3 a, Vector3 b)
+        {
+            foreach (var d in enabledDoors)
+                if (d.isActiveAndEnabled && d.leafCollider != null && d.Crosses(a, b)) return d;
+            if (walk == null) walk = new NavMeshPath();
+            if (!NavMesh.SamplePosition(a, out var ha, 1.5f, NavMesh.AllAreas) ||
+                !NavMesh.SamplePosition(b, out var hb, 1.5f, NavMesh.AllAreas) ||
+                !NavMesh.CalculatePath(ha.position, hb.position, NavMesh.AllAreas, walk)) return null;
+            int n = walk.GetCornersNonAlloc(corners);
+            for (int c = 1; c < n; c++)
+                foreach (var d in enabledDoors)
+                    if (d.isActiveAndEnabled && d.leafCollider != null && d.Crosses(corners[c - 1], corners[c])) return d;
+            return null;
+        }
+
+        /// True if the walk a -> b (raised to body height) passes through the closed leaf's box, padded so a walk that
+        /// grazes the jamb still counts (beside the doorway the wall blocks the walk anyway).
+        bool Crosses(Vector3 a, Vector3 b)
+        {
+            const float BodyHeight = 1f, Pad = 0.25f;
+            Quaternion inv = Quaternion.Inverse(transform.rotation * closedLocalRotation);
+            Vector3 c = DoorwayCenter, up = Vector3.up * BodyHeight;
+            Vector3 p = inv * (a + up - c), q = inv * (b + up - c), dir = q - p;
+            Vector3 half = closedSize * 0.5f + Vector3.one * Pad;
+            float t0 = 0f, t1 = 1f;
+            for (int ax = 0; ax < 3; ax++)                          // slab test, segment vs box
+            {
+                if (Mathf.Abs(dir[ax]) < 1e-6f) { if (Mathf.Abs(p[ax]) > half[ax]) return false; continue; }
+                float u = (-half[ax] - p[ax]) / dir[ax], v = (half[ax] - p[ax]) / dir[ax];
+                if (u > v) (u, v) = (v, u);
+                t0 = Mathf.Max(t0, u); t1 = Mathf.Min(t1, v);
+                if (t0 > t1) return false;
+            }
+            return true;
         }
 
         void UpdateStatusLight()
@@ -304,36 +428,5 @@ namespace Echo.Navigation
             Gizmos.DrawLine(centre, centre + dir * d);
         }
 #endif
-
-        /// Calls NavGraph.Instance.OnDoorChanged() (guide §6.4) without a compile dependency on M4's
-        /// NavGraph, which is not merged yet. Replace with a direct call once it is.
-        static class NavGraphBridge
-        {
-            static bool bound;
-            static PropertyInfo instance;
-            static MethodInfo onDoorChanged;
-
-            [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-            static void ResetStatics() { bound = false; instance = null; onDoorChanged = null; }
-
-            public static void DoorChanged()
-            {
-                if (!bound)
-                {
-                    bound = true;
-                    foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
-                    {
-                        Type g = asm.GetType("Echo.Navigation.NavGraph");
-                        if (g == null) continue;
-                        instance = g.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static);
-                        onDoorChanged = g.GetMethod("OnDoorChanged", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
-                        break;
-                    }
-                }
-                if (instance == null || onDoorChanged == null) return;
-                object graph = instance.GetValue(null);
-                if (graph is UnityEngine.Object o && o != null) onDoorChanged.Invoke(graph, null);
-            }
-        }
     }
 }
