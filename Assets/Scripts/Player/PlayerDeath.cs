@@ -20,12 +20,16 @@ namespace Echo.Player
     public class PlayerDeath : MonoBehaviour
     {
         public float fadeSeconds = 1f;
+        [Tooltip("Seconds before the fade starts (the death camera collapses to the floor meanwhile).")]
+        public float fadeDelay = 0.9f;
         [Tooltip("Disabled on death. Empty -> movement, input, interactor, carrier, weapon and body noises on this object.")]
         public Behaviour[] disableOnDeath;
 
         /// The live player, for agents that don't hold a reference.
         public static PlayerDeath Current { get; private set; }
         public bool IsDead { get; private set; }
+        /// What killed the player (the agent), for the death camera. Null if unknown.
+        public GameObject Killer { get; private set; }
         public event Action Died;
 
         CanvasGroup fade;
@@ -56,6 +60,7 @@ namespace Echo.Player
             }
 #endif
             IsDead = true;
+            Killer = killer;
             var carrier = GetComponent<PhysicsCarrier>();
             if (carrier != null) carrier.Drop();   // before disabling: it restores the player's speed and the prop's state
             foreach (Behaviour b in disableOnDeath)
@@ -68,6 +73,7 @@ namespace Echo.Player
         IEnumerator FadeAndReload()
         {
             if (fade == null) fade = BuildFade();
+            for (float t = 0f; t < fadeDelay; t += Time.unscaledDeltaTime) yield return null;
             for (float t = 0f; t < fadeSeconds; t += Time.unscaledDeltaTime)
             {
                 fade.alpha = t / fadeSeconds;

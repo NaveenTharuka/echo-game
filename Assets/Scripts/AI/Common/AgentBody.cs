@@ -13,6 +13,12 @@ namespace Echo.AI
     {
         public float maxHealth = 100f;
         public float attackDamage = 35f, attackCooldown = 1.6f, windup = 0.5f, reach = 1.1f, hitRadius = 0.9f;
+        [Tooltip("Lunge: during the wind-up the body springs at the target if it is within this range (m) ...")]
+        public float lungeRange = 3.4f;
+        [Tooltip("... at up to this speed (m/s), stopping short so the claws land on it.")]
+        public float lungeSpeed = 9f;
+        [Tooltip("Charging (moving faster than this, m/s) the lunge carries on past the estimate: prey runs away.")]
+        public float chargeSpeed = 4f, chargeLead = 1.5f;
         [Tooltip("Layers the claws can hit. Everything by default; set to Player once the layer exists.")]
         public LayerMask playerMask = ~0;
         public float Health { get; private set; }
@@ -39,10 +45,28 @@ namespace Echo.AI
         IEnumerator Attack(Vector3 towards)
         {
             IsAttacking = true;
+            // Lunge: spring at where it thinks the prey is (its estimate - never the player itself). When it was
+            // already charging, momentum carries it further, because fleeing prey keeps running.
+            Vector3 to = towards - transform.position; to.y = 0f;
+            float dist = to.magnitude;
+            bool charging = motor.Velocity.magnitude > chargeSpeed;
+            float lunge = dist <= lungeRange + (charging ? chargeLead : 0f)
+                ? Mathf.Max(0f, dist + (charging ? chargeLead : 0f) - reach * 0.7f) : 0f;
+            Vector3 dir = dist > 0.01f ? to / dist : transform.forward;
+            float lungeV = Mathf.Min(lungeSpeed, lunge / Mathf.Max(0.05f, windup));
             motor.Stop();
             if (anim != null) anim.Attack();
-            float t = 0f;
-            while (t < windup) { motor.FaceTowards(towards, 720f); t += Time.deltaTime; yield return null; }
+            float t = 0f, moved = 0f;
+            while (t < windup)
+            {
+                motor.FaceTowards(towards, 720f);
+                if (moved < lunge && !IsDead)
+                {
+                    float step = Mathf.Min(lungeV * Time.deltaTime, lunge - moved);
+                    motor.Lunge(dir * step); moved += step;
+                }
+                t += Time.deltaTime; yield return null;
+            }
             IsAttacking = false;
             if (IsDead) yield break;
             Noise.Make(SoundType.AgentVoice, transform.position, 0.4f, SoundSource.AgentBody, gameObject);

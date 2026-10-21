@@ -22,7 +22,9 @@ namespace Echo.AI
         enum State { Idle, Suspicious, Alert, Investigate, Search, Return, Attack }
 
         [Header("Listener")]
-        public float strikeDistance = 2.2f;
+        public float strikeDistance = 3f;
+        [Tooltip("How far the alert scream carries as a pack call to other agents (intensity x 45 m).")]
+        public float packCallIntensity = 0.9f;
         [Tooltip("Strike reflex only for sounds localised better than this (m).")]
         public float strikePrecision = 1.5f;
         [Tooltip("Ignore sounds whose priority is below this.")]
@@ -178,8 +180,12 @@ namespace Echo.AI
             Motor.Stop();
             Motor.LookAt(target.EstimatedPosition);
             if (Anim) Anim.Alert();
-            // The scream is a real sound the player hears; other agents ignore AgentBody sounds.
-            Noise.Make(SoundType.AgentVoice, transform.position + Vector3.up * 1.7f, 0.5f, SoundSource.AgentBody, gameObject);
+            // The scream is a real sound the player hears. Other agents ignore AgentBody sounds, but the scream is
+            // also a pack call: whoever can hear it learns where the Listener thinks the prey is.
+            Vector3 mouth = transform.position + Vector3.up * 1.7f;
+            Noise.Make(SoundType.AgentVoice, mouth, 0.5f, SoundSource.AgentBody, gameObject);
+            int heard = PackCall.Raise(this, mouth, packCallIntensity, target.EstimatedPosition, target.PositionError);
+            if (heard > 0) Debug.Log($"[Listener] scream heard by {heard} agent(s) - pack hunt", this);
         }
 
         void BeginInvestigate(AgentMotor.Gait gait)
