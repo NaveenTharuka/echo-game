@@ -27,6 +27,8 @@ namespace Echo.EditorTools
             public string ControllerPath;
             public string PrefabPath;
             public Type BrainType;
+            /// Added next to the brain, e.g. the Tracker's debug overlay.
+            public Type[] ExtraComponents;
             public float HearingSensitivity = 1f;
             /// Run gait speed (m/s). The player sprints at 6: a hunter slower than that can always be outrun.
             public float RunSpeed = 5f;
@@ -106,7 +108,8 @@ namespace Echo.EditorTools
             ModelPath = "Assets/Art/Characters/Tracker/Model/Demon_animated.fbx",
             ControllerPath = "Assets/Art/Characters/Tracker/Animations/Tracker.controller",
             PrefabPath = "Assets/Prefabs/Agents/Tracker.prefab",
-            BrainType = typeof(TrackerBrain),
+            BrainType = typeof(Echo.AI.Tracker.TrackerBrain),   // Gayuth-W's integrated brain (not the old TrackerAgent adapter)
+            ExtraComponents = new[] { typeof(Echo.AI.Tracker.TrackerDebugOverlay) },
             HearingSensitivity = 1.0f, RunSpeed = 5.5f, ChaseSpeed = 6.2f,   // wins by prediction, not speed
             AvoidancePriority = 45,
             AttackDamage = 35f,
@@ -457,6 +460,8 @@ namespace Echo.EditorTools
                 // unnamed layer 8. The body skips its own colliders anyway.
                 body.playerMask = ~0;
                 root.AddComponent(spec.BrainType);
+                if (spec.ExtraComponents != null)
+                    foreach (var t in spec.ExtraComponents) root.AddComponent(t);
                 var steps = root.AddComponent<AgentFootsteps>();
 
                 // Model
