@@ -260,6 +260,7 @@ GameObject:
   - component: {fileID: 1200001138580559712}
   - component: {fileID: 1125485130829959798}
   - component: {fileID: 4566785690743177704}
+  - component: {fileID: 2208802700873409595}
   m_Layer: 10
   m_Name: Tracker
   m_TagString: Untagged
@@ -444,47 +445,10 @@ MonoBehaviour:
   m_GameObject: {fileID: 7942255178022054256}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b1748b56fc73eca49ab5c10be0688272, type: 3}
+  m_Script: {fileID: 11500000, guid: 8c1a98c2c82499f4890a674d781c707e, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Echo.AI.TrackerBrain
+  m_EditorClassIdentifier: Assembly-CSharp::Echo.AI.Tracker.TrackerBrain
   thinkInterval: 0.2
-  settings:
-    capacity: 8
-    window: 25
-    maxPlayerSpeed: 6.5
-    credibilityMargin: 2
-    credibilityFalloff: 4
-    suspectThreshold: 0.3
-    tau: 8
-    minSpan: 1
-    runSpeed: 5
-    walkSpeed: 2.2
-    wProx: 1.2
-    wDir: 1
-    wAdv: 1
-    wHeat: 0.4
-    proxSigma: 6
-    advScale: 3
-    reachSlack: 5
-    heatDecay: 0.995
-    freshnessTau: 8
-    evidenceObs: 3
-    fitScale: 3
-    runThreshold: 0.55
-    walkThreshold: 0.25
-    hysteresis: 0.1
-    replanDistance: 6
-    holdTime: 4
-    attackTime: 1.8
-    strikeDistance: 2.2
-    strikeMaxError: 1.5
-    searchHeatWeight: 0.5
-    searchHold: 2
-    searchMaxTime: 15
-    searchMaxNodes: 6
-  minTargetHold: 1.5
-  muchBetterRatio: 1.5
-  ignoreOffMeshTargets: 1
 --- !u!114 &8866901835356395815
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -581,6 +545,19 @@ MonoBehaviour:
   pause: {x: 2, y: 6}
   minLeg: 7
   lookAround: 0.6
+--- !u!114 &2208802700873409595
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7942255178022054256}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cd24111bbbad2c9469a8d2429178901c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Echo.AI.Tracker.TrackerDebugOverlay
+  show: 1
 --- !u!1001 &3053533464772905914
 PrefabInstance:
   m_ObjectHideFlags: 0

@@ -31,9 +31,14 @@ namespace Echo.EditorTools
             StraightRun();
             CredibilityGate();
             ScorerPrefersAhead();
+            EtaFollowsGait();
+            AdvantageModes();
             ConfidenceRisesAndDecays();
             BestFirstOrder();
             DeciderEdgeCases();
+            GoalCommitment();
+            ErrorWeightedVelocity();
+            WarehouseIntercept();
             Performance();
             log($"{total - failures}/{total} checks passed");
             return failures;
@@ -122,6 +127,16 @@ namespace Echo.EditorTools
             VelocityEstimator.TryEstimate(m, 3f, s, out v, out _);
             Check("velocity capped at v_max", Mathf.Abs(v.magnitude - s.maxPlayerSpeed) < 1e-3f, $"|v|={v.magnitude:0.00}");
 
+            // Three 4 m-error sounds over 1 s on a 4.5 m/s line: the shrunk v is slow (steady heading, humble
+            // prediction); the ETA_player speeds are not shrunk towards 0 (else adv is optimistic, Scenario a, 15 Oct):
+            // raw = the data, moving = between the data and the 3 m/s prior.
+            m.Clear();
+            for (int i = 0; i < 3; i++) Feed(m, g, r, new Vector3(10f + 2.25f * i, 0f, 0f), i * 0.5f, 4f);
+            VelocityEstimator.TryEstimate(m, 1f, s, out v, out _, out float raw, out float moving, out _, out _, out _);
+            Check("noisy short trail: v shrunk; ETA_player speeds raw = 4.5, moving between prior 3 and 4.5",
+                  v.magnitude < 2f && Mathf.Abs(raw - 4.5f) < 0.05f && moving > s.velocityPrior && moving < raw,
+                  $"|v|={v.magnitude:0.00} raw={raw:0.00} moving={moving:0.00}");
+
             m.Clear();
             Feed(m, g, r, new Vector3(10f, 0f, 0f), 0f);
             Check("single sound gives no velocity", !VelocityEstimator.TryEstimate(m, 0.5f, s, out _, out _), $"obs={m.Count}");
@@ -198,6 +213,106 @@ namespace Echo.EditorTools
             }
         }
 
+        /// ETA_tracker is the calibrated motion model at the gait the Tracker will really use (Scenario a, 15 Oct:
+        /// the phase-3 ETA assumed run speed while the Tracker walked in the Walk band).
+        static void EtaFollowsGait()
+        {
+            var s = new TrackerSettings();
+            float standRun = TrackerMotion.Eta(10f, s.runSpeed, 0f, s), movingRun = TrackerMotion.Eta(10f, s.runSpeed, s.runSpeed, s);
+            float standWalk = TrackerMotion.Eta(10f, s.walkSpeed, 0f, s);
+            float expRun = (10f - s.etaArrive) / s.runSpeed, expWalk = (10f - s.etaArrive) / s.walkSpeed;
+            Check("motion model: (route - arrive) / v + startup only from a standstill",
+                  Mathf.Abs(standRun - (expRun + s.etaStartup)) < 1e-4f && Mathf.Abs(movingRun - expRun) < 1e-4f &&
+                  Mathf.Abs(standWalk - (expWalk + s.etaStartup)) < 1e-4f,
+                  $"10 m: run standing {standRun:0.000} s, run moving {movingRun:0.000} s, walk standing {standWalk:0.000} s");
+
+            // Same trail as the "near" scorer case: the node the run ETA intercepts is worth less at a walk.
+            var g = Plus(5, 4f, DoorState.None, out _);
+            var r = new RouteService(g, s);
+            var m = new TrackerMemory(s);
+            float[] xs = { -16f, -12f, -8f, -5f }; float[] ts = { 0f, 1.5f, 3f, 4f };
+            for (int i = 0; i < xs.Length; i++) Feed(m, g, r, new Vector3(xs[i], 0f, 0f), ts[i]);
+            VelocityEstimator.TryEstimate(m, 4f, s, out var v, out _);
+            var heat = new HeatMap(); heat.EnsureSize(g.Count);
+            Vector3 self = new(0f, 0f, -8f);
+            var sc = new InterceptScorer();
+            sc.Evaluate(r, m.Last, v, self, g.Nearest(self), 4f, heat, null, s, s.runSpeed);
+            int pick = sc.Best; float advRun = pick >= 0 ? sc.Advantage[pick] : 0f;
+            sc.Evaluate(r, m.Last, v, self, g.Nearest(self), 4f, heat, null, s, s.walkSpeed);
+            float advWalk = pick >= 0 && sc.IsCandidate[pick] ? sc.Advantage[pick] : float.NegativeInfinity;
+            Check("walking Tracker: the run-speed interception node loses its advantage",
+                  pick >= 0 && advRun > 0f && advWalk < advRun,
+                  $"node {(pick >= 0 ? g.Position(pick).ToString() : "-")}: adv run {advRun:0.00}, walk {advWalk:0.00}");
+
+            // The decider scores at the speed of the gait it issues. runToIntercept (adopted): a claimed interception
+            // (adv > 0) is run to and scored at run speed, also in the Walk band where the phase-3 ETA was wrong;
+            // without it the Walk band walks and is scored at walk speed.
+            (string name, float[] x, float[] t, bool runTo, ConfidenceBand band, TrackerGait expect)[] trails =
+            {
+                ("4 sounds", xs, ts, true, ConfidenceBand.Run, TrackerGait.Run),
+                ("2 sounds", new[] { -9f, -5f }, new[] { 2.5f, 4f }, true, ConfidenceBand.Walk, TrackerGait.Run),
+                ("2 sounds, runToIntercept off", new[] { -9f, -5f }, new[] { 2.5f, 4f }, false, ConfidenceBand.Walk, TrackerGait.Walk),
+            };
+            foreach (var (name, tx, tt, runTo, expectBand, expect) in trails)
+            {
+                var sim = new Sim(g, self) { AutoArrive = false };
+                sim.D.Settings.runToIntercept = runTo;
+                for (int i = 0; i < tx.Length; i++)
+                    sim.Percepts.Add(new TrackerPercept(new Vector3(tx[i], 0f, 0f), 0.5f, tt[i], HeardKind.Run));
+                sim.Now = 3.8f; sim.Tick();                        // Analyse
+                var c = sim.Tick();                                 // Intercept: MoveTo
+                var d = sim.D;
+                bool consistent = false; string seen = $"state={d.State} cmd={c.Kind} C={d.Confidence.Value:0.00}";
+                if (c.Kind == TrackerCommandKind.MoveTo && d.HasVelocity && d.GoalNode >= 0)
+                {
+                    var check = new InterceptScorer();
+                    float speed = c.Gait == TrackerGait.Run ? s.runSpeed : s.walkSpeed;
+                    check.Evaluate(d.Routes, d.Anchor, d.Velocity, sim.Self, g.Nearest(sim.Self), sim.Now, d.Heat, null, s, speed,
+                                   playerSpeed: d.PlayerSpeed);
+                    consistent = c.Gait == expect && d.Band == expectBand && check.Best == d.GoalNode &&
+                                 Mathf.Abs(check.Advantage[d.GoalNode] - d.Scorer.Advantage[d.GoalNode]) < 1e-4f;
+                    seen = $"gait={c.Gait} band={d.Band} C={d.Confidence.Value:0.00} goal={g.Position(d.GoalNode)} " +
+                           $"adv={d.Scorer.Advantage[d.GoalNode]:0.00}, rescored at {speed} m/s: best={(check.Best >= 0 ? g.Position(check.Best).ToString() : "-")} " +
+                           $"adv={check.Advantage[d.GoalNode]:0.00}";
+                }
+                Check($"decider ({name}): {expectBand} band issues {expect}; goal and advantage are those of that gait", consistent, seen);
+            }
+        }
+
+        /// Time advantage as reward vs constraint on the phase-1 "near" case (the reward picks the side node (0,0,-4)
+        /// beside the junction). Constraint modes must pick a feasible (claimed) node or fall back without a claim;
+        /// ConstraintOnLine's claim must lie on the player's line.
+        static void AdvantageModes()
+        {
+            var g = Plus(5, 4f, DoorState.None, out _);
+            float[] xs = { -16f, -12f, -8f, -5f }; float[] ts = { 0f, 1.5f, 3f, 4f };
+            Vector3 self = new(0f, 0f, -8f);
+            foreach (var mode in new[] { AdvantageMode.Reward, AdvantageMode.Saturated, AdvantageMode.Constraint, AdvantageMode.ConstraintOnLine })
+            {
+                var s = new TrackerSettings { advMode = mode };
+                var r = new RouteService(g, s);
+                var m = new TrackerMemory(s);
+                for (int i = 0; i < xs.Length; i++) Feed(m, g, r, new Vector3(xs[i], 0f, 0f), ts[i]);
+                VelocityEstimator.TryEstimate(m, 4f, s, out var v, out _);
+                var heat = new HeatMap(); heat.EnsureSize(g.Count);
+                var sc = new InterceptScorer();
+                bool has = sc.Evaluate(r, m.Last, v, self, g.Nearest(self), 4f, heat, null, s, s.runSpeed);
+                int b = sc.Best;
+                Vector3 off = b >= 0 ? g.Position(b) - m.Last.Position : Vector3.zero; off.y = 0f;
+                float cos = off.magnitude > 0.5f ? Vector3.Dot(v.normalized, off.normalized) : 0f;
+                bool ok = has && b >= 0 && mode switch
+                {
+                    AdvantageMode.Saturated => sc.Advantage[b] <= s.advCap + 1e-5f,
+                    AdvantageMode.Constraint => sc.Fallback ? !sc.Claimed[b] : sc.Claimed[b] && sc.Advantage[b] > 0f,
+                    AdvantageMode.ConstraintOnLine => sc.Fallback ? !sc.Claimed[b] : sc.Claimed[b] && cos >= s.onLineCos,
+                    _ => sc.Claimed[b] == sc.Advantage[b] > 0f,
+                };
+                Check($"advantage mode {mode}: pick is consistent with the mode", ok,
+                      $"best={(b >= 0 ? g.Position(b).ToString() : "-")} adv={(b >= 0 ? sc.Advantage[b] : 0f):0.00} cos={cos:0.00} " +
+                      $"claimed={(b >= 0 && sc.Claimed[b])} fallback={sc.Fallback} S={sc.BestScore:0.00}");
+            }
+        }
+
         static float Confidence(TrackerMemory m, RouteService r, InterceptScorer sc, HeatMap heat, Vector3 self, float now, TrackerSettings s)
         {
             bool hasV = VelocityEstimator.TryEstimate(m, now, s, out var v, out float rms);
@@ -266,6 +381,19 @@ namespace Echo.EditorTools
         }
 
         /// Tiny simulation: a MoveTo teleports the agent to the target and reports Arrived next tick.
+        /// A real graph whose Nearest always fails (-1), as an adapter may report for a point it cannot place.
+        sealed class OffGraphWorld : ITrackerWorld
+        {
+            readonly ITrackerWorld w;
+            public OffGraphWorld(ITrackerWorld inner) => w = inner;
+            public int Count => w.Count;
+            public int Version => w.Version;
+            public Vector3 Position(int node) => w.Position(node);
+            public int NeighbourCount(int node) => w.NeighbourCount(node);
+            public TrackerEdge Neighbour(int node, int k) => w.Neighbour(node, k);
+            public int Nearest(Vector3 p) => -1;
+        }
+
         sealed class Sim
         {
             public readonly TrackerDecider D;
@@ -356,6 +484,25 @@ namespace Echo.EditorTools
             Check("close precise sound: Attack", c.Kind == TrackerCommandKind.Attack && sim.D.State == TrackerState.Attack,
                   $"cmd={c.Kind} state={sim.D.State}");
 
+            // Nearest = -1 (an empty graph, or a world that cannot place a point): no exception, nothing stored or planned.
+            string thrown = "none";
+            var empty = new Sim(new TrackerGraph(), Vector3.zero);
+            var off = new Sim(new OffGraphWorld(Corridor(20f, 2f)), Vector3.zero);
+            try
+            {
+                foreach (var e in new[] { empty, off })
+                    for (int i = 0; i < 6; i++)
+                    {
+                        e.Percepts.Add(new TrackerPercept(new Vector3(4f + i, 0f, 0f), 0.5f, e.Now + 0.1f, HeardKind.Run));
+                        e.Tick(0.5f);
+                    }
+            }
+            catch (Exception ex) { thrown = ex.GetType().Name; }
+            Check("Nearest = -1: no exception, sound not stored, no command",
+                  thrown == "none" && empty.D.Memory.Count == 0 && off.D.Memory.Count == 0 &&
+                  empty.Last.Kind == TrackerCommandKind.None && off.Last.Kind == TrackerCommandKind.None && off.D.Filtered == 6,
+                  $"thrown={thrown} mem={empty.D.Memory.Count}/{off.D.Memory.Count} cmd={empty.Last.Kind}/{off.Last.Kind} filtered={off.D.Filtered}");
+
             // Player dies -> reset (the Tracker is away from home).
             sim.Self = new Vector3(20f, 0f, 0f);
             sim.D.Reset();
@@ -363,6 +510,231 @@ namespace Echo.EditorTools
             Check("player death: reset to Idle, memory and heat cleared, going home",
                   sim.D.State == TrackerState.Idle && sim.D.Memory.Count == 0 && c.Kind == TrackerCommandKind.MoveTo && c.Target == sim.D.Home,
                   $"state={sim.D.State} mem={sim.D.Memory.Count} cmd={c.Kind}");
+        }
+
+        /// Re-planning loop (15 Oct, scenario a in Unity): a runner crosses the Sandbox_TrackerGrid corridor, heard every
+        /// 0.5 s with 3-5 m error. Under the phase-3 rule (switch on any > replanDistance move, raw latest percept as the
+        /// anchor) the goal flips back and forth between neighbouring nodes (A -> B -> A). Commitment + fitted anchor
+        /// must remove most of those flips and still bring the Tracker as close to the runner (straight-line mover).
+        static void GoalCommitment()
+        {
+            var old = new TrackerSettings { switchMargin = 0f, anchor = TrackerAnchor.Raw, pointRoute = false };
+            RunCommitment(old, out int oldFlips, out int oldMoves, out float oldNear);
+            RunCommitment(new TrackerSettings(), out int flips, out int moves, out float near);
+            string seen = $"20 runs; phase-3 rule: {oldFlips} A-B-A flips, {oldMoves} MoveTos, mean closest approach {oldNear:0.0} m; " +
+                          $"now: {flips} flips, {moves} MoveTos, {near:0.0} m";
+            Check("noisy trail reproduces the re-planning loop under the phase-3 rule", oldFlips >= 5, seen);
+            Check("commitment: flips cut by >= 4x, the Tracker gets as close to the runner", flips * 4 <= oldFlips && near <= oldNear + 0.5f, seen);
+        }
+
+        static void RunCommitment(TrackerSettings s, out int flips, out int moves, out float approach)
+        {
+            var g = SandboxTrackerLayout.BuildGraph(out _);
+            flips = moves = 0; approach = 0f;
+            var percepts = new List<TrackerPercept>();
+            for (int seed = 0; seed < 20; seed++)
+            {
+                var rng = new System.Random(seed);
+                Vector3 self = SandboxTrackerLayout.Centre(4, 5), runner = SandboxTrackerLayout.Centre(0, 4);
+                var d = new TrackerDecider(g, s, self);
+                int g1 = -1, g2 = -1; float speed = 0f, nextSound = 0f, closest = float.MaxValue; Vector3 goal = self;
+                for (float t = 0.2f; t < 14f; t += 0.2f)
+                {
+                    runner.x = Mathf.Min(runner.x + 3f * 0.2f, SandboxTrackerLayout.Centre(8, 4).x);
+                    if (t >= nextSound)
+                    {
+                        nextSound = t + 0.5f;
+                        float err = 3f + 2f * (float)rng.NextDouble(), ang = (float)(rng.NextDouble() * Math.PI * 2);
+                        float rad = err * Mathf.Sqrt((float)rng.NextDouble());
+                        percepts.Add(new TrackerPercept(runner + new Vector3(Mathf.Cos(ang) * rad, 0f, Mathf.Sin(ang) * rad), err, t, HeardKind.Run));
+                    }
+                    closest = Mathf.Min(closest, Vector3.Distance(self, runner));
+                    bool arrived = speed > 0f && self == goal;
+                    var c = d.Tick(new TrackerTickInput { Now = t, Self = self, Arrived = arrived, SelfSpeed = speed }, percepts);
+                    percepts.Clear();
+                    if (c.Kind == TrackerCommandKind.MoveTo) { goal = c.Target; speed = c.Gait == TrackerGait.Run ? s.runSpeed : 2.2f; }
+                    else if (c.Kind == TrackerCommandKind.Stop) speed = 0f;
+                    if (c.Kind == TrackerCommandKind.MoveTo && d.State == TrackerState.Intercept)
+                    {
+                        moves++;
+                        if (d.LastReplan == TrackerReplan.GoalMoved && d.GoalNode == g2) flips++;
+                        if (d.GoalNode != g1) { g2 = g1; g1 = d.GoalNode; }
+                    }
+                    self = Vector3.MoveTowards(self, goal, speed * 0.2f);
+                }
+                approach += closest / 20f;
+            }
+        }
+
+        /// Same 3 m/s line, but every third sound is badly localised (6 m error, 5 m off the line, all on one side):
+        /// inverse-variance weights keep v on the line; equal weights let the bad sounds tilt it.
+        static void ErrorWeightedVelocity()
+        {
+            var g = Grid(20, 20, 3f);
+            float Tilt(bool weighting)
+            {
+                var s = new TrackerSettings { errorWeighting = weighting };
+                var r = new RouteService(g, s);
+                var m = new TrackerMemory(s);
+                for (int i = 0; i < 8; i++)
+                {
+                    float t = i * 0.5f; bool bad = i % 3 == 1;
+                    Feed(m, g, r, new Vector3(10f + 3f * t, 0f, 30f + (bad ? 5f + 0.4f * i : Jitter(i))), t, bad ? 6f : 1f);
+                }
+                VelocityEstimator.TryEstimate(m, 3.5f, s, out var v, out _);
+                return Mathf.Abs(Mathf.Atan2(v.z, v.x) * Mathf.Rad2Deg);
+            }
+            float on = Tilt(true), off = Tilt(false);
+            Check("error weighting (flag, off by default): badly localised sounds barely tilt v (< half the equal-weight tilt, < 5 deg)",
+                  on < 5f && on < 0.5f * off, $"heading error {on:0.0} deg weighted vs {off:0.0} deg equal weights");
+        }
+
+        /// Grid world inside a wall rectangle that knows its walls (stands in for NavMesh.Raycast).
+        sealed class WalledWorld : ITrackerWorld, ITrackerWalkable
+        {
+            readonly ITrackerWorld w;
+            public readonly Rect Walls;
+            public WalledWorld(ITrackerWorld inner, Rect walls) { w = inner; Walls = walls; }
+            public int Count => w.Count;
+            public int Version => w.Version;
+            public Vector3 Position(int node) => w.Position(node);
+            public int NeighbourCount(int node) => w.NeighbourCount(node);
+            public TrackerEdge Neighbour(int node, int k) => w.Neighbour(node, k);
+            public int Nearest(Vector3 p) => w.Nearest(p);
+            public bool Inside(Vector3 p) =>
+                p.x >= Walls.xMin - 1e-3f && p.x <= Walls.xMax + 1e-3f && p.z >= Walls.yMin - 1e-3f && p.z <= Walls.yMax + 1e-3f;
+            public Vector3 Snap(Vector3 p) => new(Mathf.Clamp(p.x, Walls.xMin, Walls.xMax), p.y, Mathf.Clamp(p.z, Walls.yMin, Walls.yMax));
+
+            public Vector3 ClampWalk(Vector3 from, Vector3 to)
+            {
+                from = Snap(from);
+                Vector3 d = to - from; float t = 1f;
+                if (d.x > 1e-5f) t = Mathf.Min(t, (Walls.xMax - from.x) / d.x); else if (d.x < -1e-5f) t = Mathf.Min(t, (Walls.xMin - from.x) / d.x);
+                if (d.z > 1e-5f) t = Mathf.Min(t, (Walls.yMax - from.z) / d.z); else if (d.z < -1e-5f) t = Mathf.Min(t, (Walls.yMin - from.z) / d.z);
+                return from + d * Mathf.Max(0f, t);
+            }
+        }
+
+        public struct InterceptStats
+        {
+            public float Switches, MaxJump, OutsidePct, Closest, RunPct, AheadPct, Catches;
+            public float[] ByReason;
+            public override string ToString() =>
+                $"switches/10 s {Switches:0.0}, max goal jump {MaxJump:0.0} m, predictions past a wall {OutsidePct:0}%, " +
+                $"closest {Closest:0.0} m, run {RunPct:0}% of intercept, ahead of the runner {AheadPct:0}% of runs, touched {Catches:0}%" +
+                (ByReason == null ? "" : $" [new {ByReason[0]:0.0} band {ByReason[1]:0.0} world {ByReason[2]:0.0} moved {ByReason[3]:0.0} failed {ByReason[4]:0.0}]");
+        }
+
+        /// SampleScene report (21 Oct): Tracker post (54, 78) in the warehouse, a runner makes a U around it at 4.5 m/s,
+        /// run steps every 0.33 s heard at 8-15 m with Hearing's error (4.7-5.8 m, uniform in the disc, snapped inside
+        /// the walls). The phase-1 core switched goals ~13x / 10 s up to 17 m apart, predicted past the north wall and
+        /// stayed > 8 m away. 30 seeds, straight-line mover (5 m/s run, 2.2 walk, arrives within 1 m).
+        public static InterceptStats RunWarehouse(TrackerSettings s, bool walls, int seeds = 30, int firstSeed = 0)
+        {
+            var rect = new Rect(31.5f, 61.5f, 45f, 32.5f);           // x 31.5..76.5, z 61.5..94
+            var grid = new TrackerGraph();
+            const int nx = 15, nz = 11;
+            for (int z = 0; z < nz; z++)
+            for (int x = 0; x < nx; x++)
+            {
+                int i = grid.AddNode(new Vector3(33f + 3f * x, 0f, 63f + 3f * z));
+                if (x > 0) grid.Connect(i - 1, i);
+                if (z > 0) grid.Connect(i - nx, i);
+            }
+            var walled = new WalledWorld(grid, rect);
+            ITrackerWorld world = walls ? walled : grid;
+            Vector3[] path = { new(45f, 0f, 66f), new(45f, 0f, 88f), new(63f, 0f, 88f), new(63f, 0f, 66f) };
+            var percepts = new List<TrackerPercept>();
+            var st = new InterceptStats { ByReason = new float[5] };
+            int predTotal = 0, predOut = 0; float runTicks = 0f, icTicks = 0f;
+            for (int seed = 0; seed < seeds; seed++)
+            {
+                var rng = new System.Random(firstSeed + seed);
+                var d = new TrackerDecider(world, s, new Vector3(54f, 0f, 78f));
+                Vector3 self = d.Home, goal = self, runner = path[0], rv = Vector3.zero;
+                int leg = 1, lastGoal = -1; float speed = 0f, nextSound = 0f, closest = float.MaxValue, firstIc = -1f;
+                bool ahead = false, touched = false;
+                for (float t = 0.2f; t < 14f; t += 0.2f)
+                {
+                    float move = 4.5f * 0.2f;
+                    while (move > 1e-4f && leg < path.Length)
+                    {
+                        Vector3 to = path[leg], prev = runner;
+                        runner = Vector3.MoveTowards(runner, to, move);
+                        move -= Vector3.Distance(prev, runner);
+                        rv = (to - prev).normalized * 4.5f;
+                        if (runner == to) leg++;
+                    }
+                    if (leg >= path.Length) rv = Vector3.zero;
+                    float dist = Vector3.Distance(self, runner);
+                    if (t >= nextSound && leg < path.Length)
+                    {
+                        nextSound = t + 0.33f;
+                        float err = Mathf.Clamp(4.7f + (dist - 8f) * 1.1f / 7f, 4f, 6f);
+                        float ang = (float)(rng.NextDouble() * Math.PI * 2), rad = err * Mathf.Sqrt((float)rng.NextDouble());
+                        var heard = walled.Snap(runner + new Vector3(Mathf.Cos(ang) * rad, 0f, Mathf.Sin(ang) * rad));
+                        percepts.Add(new TrackerPercept(heard, err, t, HeardKind.Run));
+                    }
+                    closest = Mathf.Min(closest, dist);
+                    if (dist < 1f) touched = true;
+                    if (dist < 4f && rv != Vector3.zero && Vector3.Dot(rv, self - runner) > 0f) ahead = true;
+                    bool arrived = speed > 0f && Vector3.Distance(self, goal) < 1f;
+                    var c = d.Tick(new TrackerTickInput { Now = t, Self = self, SelfSpeed = speed, Arrived = arrived }, percepts);
+                    percepts.Clear();
+                    if (c.Kind == TrackerCommandKind.MoveTo) { goal = c.Target; speed = c.Gait == TrackerGait.Run ? s.runSpeed : s.walkSpeed; }
+                    else if (c.Kind == TrackerCommandKind.Stop || c.Kind == TrackerCommandKind.Attack || arrived) speed = 0f;
+                    if (d.State == TrackerState.Intercept)
+                    {
+                        if (firstIc < 0f) firstIc = t;
+                        icTicks++; if (speed >= s.runSpeed) runTicks++;
+                        if (d.HasVelocity) { predTotal++; if (!walled.Inside(d.Predicted)) predOut++; }
+                        if (c.Kind == TrackerCommandKind.MoveTo && d.GoalNode != lastGoal && t - firstIc <= 10f)
+                        {
+                            if (lastGoal >= 0)
+                            {
+                                st.Switches += 1f / seeds; st.ByReason[(int)d.LastReplan] += 1f / seeds;
+                                st.MaxJump = Mathf.Max(st.MaxJump, Vector3.Distance(world.Position(lastGoal), world.Position(d.GoalNode)));
+                            }
+                            lastGoal = d.GoalNode;
+                        }
+                    }
+                    self = Vector3.MoveTowards(self, goal, speed * 0.2f);
+                }
+                st.Closest += closest / seeds;
+                if (ahead) st.AheadPct += 100f / seeds;
+                if (touched) st.Catches += 100f / seeds;
+            }
+            st.OutsidePct = predTotal > 0 ? 100f * predOut / predTotal : 0f;
+            st.RunPct = icTicks > 0f ? 100f * runTicks / icTicks : 0f;
+            return st;
+        }
+
+        /// Settings that reproduce the phase-1 core still running in SampleScene (no shrinkage, commitment, fitted
+        /// anchor, point routes, gait-aware ETA or the 21 Oct fixes).
+        public static TrackerSettings PhaseOne() => new()
+        {
+            velocityPrior = 0f, switchMargin = 0f, anchor = TrackerAnchor.Raw, pointRoute = false, runToIntercept = false,
+            etaFromGait = false, advMode = AdvantageMode.Reward, playerEtaSpeed = PlayerEtaSpeed.Shrunk, wHeat = 0.4f,
+            minInterceptScore = 0f, dirSpeedRef = 0.01f,
+            errorWeighting = false, clampPrediction = false, fitNoiseCorrected = false
+        };
+
+        /// Goal hold (the report's fix 1) was tried on the shipped core with this run, x300: locking the goal 1-2.5 s cut
+        /// switches 8.5 -> 6.7-7.9 / 10 s but touches fell 39 % -> 24-36 % (the remaining switches follow the runner's
+        /// real turns; switchMargin already absorbs the noise), so it is not in the core.
+        static void WarehouseIntercept()
+        {
+            var p1 = RunWarehouse(PhaseOne(), walls: false);
+            var noClamp = RunWarehouse(new TrackerSettings { clampPrediction = false }, walls: true);
+            var now = RunWarehouse(new TrackerSettings(), walls: true);
+            string seen = $"\n    phase 1:   {p1}\n    no clamp:  {noClamp}\n    shipped:   {now}";
+            Check("warehouse U-run: phase-1 settings reproduce the SampleScene report (thrash, walk, predictions past walls)",
+                  p1.Switches >= 5f && p1.RunPct < 20f && p1.OutsidePct > 20f, seen);
+            Check("warehouse U-run: no prediction past a wall", now.OutsidePct == 0f && noClamp.OutsidePct > 0f,
+                  $"{now.OutsidePct:0.0}% (without the clamp {noClamp.OutsidePct:0.0}%)");
+            Check("warehouse U-run: shipped core switches <= 2/3 as often as phase 1, runs, gets ahead, closer and touches more",
+                  now.Switches * 1.5f <= p1.Switches && now.RunPct > 3f * p1.RunPct && now.AheadPct > p1.AheadPct &&
+                  now.Closest < p1.Closest && now.Catches > p1.Catches, seen);
         }
 
         static void Performance()

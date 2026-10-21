@@ -66,17 +66,51 @@ namespace Echo.AI.Tracker
         public float[] Dist { get; private set; } = Array.Empty<float>();
         readonly NodeHeap heap = new();
 
+        /// Point the field was seeded from (ComputeFromPoint), for its cache key.
+        public Vector3 Point { get; private set; }
+
         public void Compute(ITrackerWorld w, int source, float doorSpeed)
+        {
+            if (!Reset(w, source)) return;
+            Dist[source] = 0f;
+            heap.Push(source, 0f);
+            Relax(w, doorSpeed);
+        }
+
+        /// Route distances from a POINT p whose nearest node is `node`: seeded at that node and at each of its
+        /// neighbours with the straight-line distance from p (plus the door cost of that edge). The node-source
+        /// field + |p - node| over-counts by twice the along-edge offset whenever p is already past its node
+        /// towards the target (15 Oct: ETA_player -0.7 s mean in the replay, -1.8 s with the lagging fitted anchor).
+        public void ComputeFromPoint(ITrackerWorld w, Vector3 p, int node, float doorSpeed)
+        {
+            Point = p;
+            if (!Reset(w, node)) return;
+            Vector3 np = w.Position(node);
+            Dist[node] = Vector3.Distance(p, np);
+            heap.Push(node, Dist[node]);
+            int k = w.NeighbourCount(node);
+            for (int j = 0; j < k; j++)
+            {
+                var e = w.Neighbour(node, j);
+                float extra = TrackerCosts.EdgeCost(e, doorSpeed) - e.Length;       // 0 open, delay closed, inf locked
+                float d = Vector3.Distance(p, w.Position(e.To)) + extra;
+                if (d < Dist[e.To]) { Dist[e.To] = d; heap.Push(e.To, d); }
+            }
+            Relax(w, doorSpeed);
+        }
+
+        bool Reset(ITrackerWorld w, int source)
         {
             int n = w.Count;
             if (Dist.Length != n) Dist = new float[n];
             for (int i = 0; i < n; i++) Dist[i] = float.PositiveInfinity;
             Source = source; Version = w.Version;
-            if (source < 0 || source >= n) return;
-
             heap.Clear();
-            Dist[source] = 0f;
-            heap.Push(source, 0f);
+            return source >= 0 && source < n;
+        }
+
+        void Relax(ITrackerWorld w, float doorSpeed)
+        {
             while (heap.Count > 0)
             {
                 int cur = heap.Pop(out float d);
@@ -114,6 +148,21 @@ namespace Echo.AI.Tracker
         }
 
         public ITrackerWorld World => world;
+
+        readonly RouteField pointField = new();
+
+        /// Route distances from point p (nearest node `node`) to every node; recomputed only when p, the node or
+        /// the world version changes (once per new sound, not per tick).
+        public RouteField FieldFrom(Vector3 p, int node)
+        {
+            if (pointField.Source != node || pointField.Version != world.Version || pointField.Point != p ||
+                pointField.Dist.Length != world.Count)
+            {
+                pointField.ComputeFromPoint(world, p, node, settings.maxPlayerSpeed);
+                Computations++;
+            }
+            return pointField;
+        }
 
         public RouteField Field(int source)
         {
