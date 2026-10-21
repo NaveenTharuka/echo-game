@@ -26,12 +26,12 @@ namespace Echo.AI
         /// True from the start of the wind-up until the swing has landed.
         public bool IsAttacking { get; private set; }
 
-        AgentBrain brain; AgentMotor motor; AgentAnimatorBridge anim; Collider body; float nextAttack;
+        AgentBrain brain; AgentMotor motor; AgentAnimatorBridge anim; AgentVoice voice; Collider body; float nextAttack;
 
         void Awake()
         {
             Health = maxHealth;
-            brain = GetComponent<AgentBrain>(); motor = GetComponent<AgentMotor>(); TryGetComponent(out anim);
+            brain = GetComponent<AgentBrain>(); motor = GetComponent<AgentMotor>(); TryGetComponent(out anim); TryGetComponent(out voice);
             body = GetComponent<Collider>();
         }
 
@@ -56,6 +56,7 @@ namespace Echo.AI
             float lungeV = Mathf.Min(lungeSpeed, lunge / Mathf.Max(0.05f, windup));
             motor.Stop();
             if (anim != null) anim.Attack();
+            if (voice != null) voice.Attack();
             float t = 0f, moved = 0f;
             while (t < windup)
             {
@@ -69,7 +70,8 @@ namespace Echo.AI
             }
             IsAttacking = false;
             if (IsDead) yield break;
-            Noise.Make(SoundType.AgentVoice, transform.position, 0.4f, SoundSource.AgentBody, gameObject);
+            Noise.Make(SoundType.AgentVoice, transform.position, 0.4f, SoundSource.AgentBody, gameObject,
+                       playAudio: voice == null || !voice.HasAttack);   // its own snarl already played at the wind-up
             // Hit resolution is physics, not perception: whatever is in front of the claws gets hit.
             var centre = transform.position + Vector3.up * 1.1f + transform.forward * reach;
             foreach (var c in Physics.OverlapSphere(centre, hitRadius, playerMask, QueryTriggerInteraction.Ignore))
@@ -90,10 +92,12 @@ namespace Echo.AI
             {
                 StopAllCoroutines(); IsAttacking = false;
                 motor.Stop(); if (anim != null) anim.Die();
+                if (voice != null) voice.Death();
                 if (body) body.enabled = false;
                 return;
             }
             if (anim != null) anim.Hit();
+            if (voice != null) voice.Hurt();
             brain.OnHurt(from);
         }
 

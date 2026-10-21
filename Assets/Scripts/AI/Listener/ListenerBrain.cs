@@ -186,7 +186,9 @@ namespace Echo.AI
             // The scream is a real sound the player hears. Other agents ignore AgentBody sounds, but the scream is
             // also a pack call: whoever can hear it learns where the Listener thinks the prey is.
             Vector3 mouth = transform.position + Vector3.up * 1.7f;
-            Noise.Make(SoundType.AgentVoice, mouth, 0.5f, SoundSource.AgentBody, gameObject);
+            bool voiced = TryGetComponent(out AgentVoice voice) && voice.HasScream;
+            if (voiced) voice.Scream();
+            Noise.Make(SoundType.AgentVoice, mouth, 0.5f, SoundSource.AgentBody, gameObject, playAudio: !voiced);
             int heard = PackCall.Raise(this, mouth, packCallIntensity, target.EstimatedPosition, target.PositionError);
             if (heard > 0) Debug.Log($"[Listener] scream heard by {heard} agent(s) - pack hunt", this);
         }

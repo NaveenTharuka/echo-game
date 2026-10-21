@@ -269,6 +269,7 @@ namespace Echo.AI
             // Shot: it knows roughly where from, roars and backs off to re-plan instead of charging a gun.
             playerEst = from; playerEstTime = Time.time;
             if (Anim) Anim.Alert();
+            if (TryGetComponent(out AgentVoice voice)) voice.Scream(true);   // the roar
             Relocate(AgentMotor.Gait.Run, "shot: backing off");
         }
 
