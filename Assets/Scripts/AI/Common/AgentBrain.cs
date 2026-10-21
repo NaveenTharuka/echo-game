@@ -13,6 +13,7 @@ namespace Echo.AI
 
         protected Hearing Hearing; protected AgentMotor Motor; protected AgentBody Body;
         protected AgentAnimatorBridge Anim;                       // may be null in greybox prototypes
+        protected AgentPatrol Patrol;                             // optional: prowl the territory while idle
         protected readonly List<PerceivedSound> NewSounds = new();
         protected readonly HabituationMemory Habituation = new();
         protected Vector3 Home; protected Quaternion HomeRotation;
@@ -33,6 +34,7 @@ namespace Echo.AI
         {
             Hearing = GetComponent<Hearing>(); Motor = GetComponent<AgentMotor>(); Body = GetComponent<AgentBody>();
             TryGetComponent(out Anim);
+            TryGetComponent(out Patrol);
             Home = transform.position; HomeRotation = transform.rotation;
         }
         protected virtual void OnEnable() => AgentRegistry.Add(this);
@@ -57,8 +59,23 @@ namespace Echo.AI
         /// Perception -> memory -> decision -> action. Called at ~5 Hz or immediately on loud sounds.
         protected abstract void Think();
 
+        /// Idle: walk the territory (AgentPatrol). Call from the brain's idle state every tick.
+        protected void PatrolTick() { if (Patrol != null) Patrol.Tick(Motor, Anim, Arrived, Failed); }
+        /// Leaving idle: the patrol lets go and stops the walk to its next stop (every brain enters its new state
+        /// before it issues the new move, so this never cancels the brain's own order).
+        protected void PatrolStop()
+        {
+            if (Patrol == null || !Patrol.IsPatrolling) return;
+            Patrol.Interrupt();
+            Motor.Stop();
+        }
+
         /// Touch sense: something (the player) brushed against the agent.
         public virtual void OnContact(Vector3 where) => Body.TryAttack(where);
+
+        /// An alarm went off at `at` and this agent heard it (it arrives through Hearing as well). Agents with a
+        /// plan for it override this (the Ambusher gets ahead of the fleeing prey). Default: the sound is enough.
+        public virtual void OnAlarm(Vector3 at) { }
 
         /// Got hurt: by default treat it like a very loud, precise sound at `from`.
         public virtual void OnHurt(Vector3 from) { }

@@ -60,8 +60,9 @@ namespace Echo.AI
                     if (Time.time >= nextDecision && Time.time >= cooldownUntil)
                     {
                         nextDecision = Time.time + decisionInterval;
-                        if (SelectDeception()) BeginRelocateOrGenerate();
+                        if (SelectDeception()) { BeginRelocateOrGenerate(); break; }
                     }
+                    PatrolTick();   // creep around its territory, listening
                     break;
                 case State.Relocate:
                     if (Arrived || InVoiceRange(plannedNode)) BeginGenerate();
@@ -274,6 +275,7 @@ namespace Echo.AI
 
         void Enter(State s)
         {
+            if (s != State.Observe) PatrolStop();
             state = s; stateTime = 0f;
             if (Anim) Anim.SetListening(s is State.Observe or State.Cooldown && !Motor.IsMoving);
         }

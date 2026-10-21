@@ -6,7 +6,7 @@ using UnityEngine;
 
 namespace Echo.EditorTools
 {
-    /// ECHO > Agents > Apply Chase Tuning: writes the Phase 1 hunting values into the four agent prefabs without a
+    /// ECHO > Agents > Apply Chase Tuning: writes the Phase 1 hunting values (and the Phase 2 AgentPatrol) into the four agent prefabs without a
     /// full rebuild (AgentAssetBuilder sets the same values on a rebuild), then removes scene overrides of exactly these
     /// fields in the open scene, so instances pick the prefab values up (stale overrides win otherwise).
     public static class AgentChaseTuning
@@ -29,6 +29,10 @@ namespace Echo.EditorTools
                     if (root.TryGetComponent(out AgentMotor motor)) motor.chaseSpeed = spec.ChaseSpeed;
                     if (root.TryGetComponent(out ListenerBrain listener)) listener.strikeDistance = 3f;
                     if (root.TryGetComponent(out AmbusherBrain ambusher)) ambusher.closeStrike = 3f;
+                    // Phase 2: idle agents prowl (scenes set the territory zones; default = around home).
+                    if (!root.TryGetComponent(out AgentPatrol patrol)) patrol = root.AddComponent<AgentPatrol>();
+                    patrol.gait = spec.BrainType == typeof(MimicBrain) || spec.BrainType == typeof(AmbusherBrain)
+                        ? AgentMotor.Gait.Sneak : AgentMotor.Gait.Walk;
                     if (root.TryGetComponent(out AgentAnimatorBridge bridge))
                     {
                         // Chasing runs faster than the run clip: speed its playback up instead of sliding.
