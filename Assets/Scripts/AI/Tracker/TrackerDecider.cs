@@ -88,7 +88,7 @@ namespace Echo.AI.Tracker
         public float LastCredibility { get; private set; }
 
         bool[] banned = Array.Empty<bool>();
-        float stateStart, rms, holdUntil;
+        float stateStart, rms, noiseRms, holdUntil;
         bool searchHolding, needHome, interceptGoal, runGoal, scoredPick, goalScored, goalClaimed;
         int selfNode, goalVersion;
         TrackerGait goalGait;
@@ -282,7 +282,7 @@ namespace Echo.AI.Tracker
             if (!Memory.HasLast) { HasVelocity = false; Confidence = default; return false; }
             var last = Memory.Last;
 
-            HasVelocity = VelocityEstimator.TryEstimate(Memory, now, s, out var v, out rms, out float raw, out float moving, out var anchorLine, out var anchorShrunk);
+            HasVelocity = VelocityEstimator.TryEstimate(Memory, now, s, out var v, out rms, out float raw, out float moving, out var anchorLine, out var anchorShrunk, out noiseRms);
             Velocity = HasVelocity ? v : Vector3.zero;
             PlayerSpeed = !HasVelocity ? 0f : s.playerEtaSpeed switch
             {
@@ -320,12 +320,16 @@ namespace Echo.AI.Tracker
                       !float.IsPositiveInfinity(Routes.Field(selfNode).Dist[node]);
                 margin = HasVelocity ? 0f : 1f;  // single sound: unambiguous; failed prediction: ambiguous
             }
-            Confidence = ConfidenceModel.Compute(now - last.Time, Memory.Count, HasVelocity, rms, margin, s);
+            // fitNoiseCorrected: only the residual the hearing error does not explain says "not a straight line".
+            float fitRms = s.fitNoiseCorrected ? Mathf.Sqrt(Mathf.Max(0f, rms * rms - noiseRms * noiseRms)) : rms;
+            Confidence = ConfidenceModel.Compute(now - last.Time, Memory.Count, HasVelocity, fitRms, margin, s);
             return has;
         }
 
         /// Commitment test for a scored goal against this tick's scored best `target`. Unscored goals (latest
-        /// sound) keep the distance rule.
+        /// sound) keep the distance rule. No minimum hold time on top (21 Oct, warehouse U-run x300 in the core
+        /// checks): locking the goal 1-2.5 s cut switches 8.5 -> 6.7-7.9 / 10 s but touches fell 39 % -> 24-36 %;
+        /// the remaining switches follow the player's real turns, the margin already absorbs the noise.
         bool KeepGoal(Vector3 target)
         {
             var s = Settings;

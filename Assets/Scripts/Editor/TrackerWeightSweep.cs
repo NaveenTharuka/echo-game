@@ -38,12 +38,14 @@ namespace Echo.EditorTools
             public float? SwitchMargin;
             public bool? PointRoute;
             public TrackerAnchor? Anchor;
+            /// Last word on the settings (stage F toggles the 21 Oct flags); null = none.
+            public Action<TrackerSettings> Tweak;
             public Config(string name, bool routeLead, bool gate, float prox, float dir, float adv, float heat,
                           bool etaGait = true, bool runToIntercept = false, PlayerEtaSpeed playerSpeed = PlayerEtaSpeed.Shrunk)
             {
                 Name = name; RouteLead = routeLead; Gate = gate; Prox = prox; Dir = dir; Adv = adv; Heat = heat;
                 EtaGait = etaGait; RunToIntercept = runToIntercept; PlayerSpeed = playerSpeed; RunAdvMin = 0f; AdvMode = AdvantageMode.Reward;
-                SwitchMargin = null; Anchor = null; PointRoute = null;
+                SwitchMargin = null; Anchor = null; PointRoute = null; Tweak = null;
             }
             public Config With(string name, PlayerEtaSpeed playerSpeed, float runAdvMin = 0f) =>
                 new(name, RouteLead, Gate, Prox, Dir, Adv, Heat, EtaGait, RunToIntercept, playerSpeed) { RunAdvMin = runAdvMin };
@@ -192,7 +194,34 @@ namespace Echo.EditorTools
             // catch-anywhere metric with a turning runner, but loses the straight-run interception race (scenario a
             // replay: 21/40 vs 34/40). Same reasoning as P4 over P3: ship the unbiased model.
             log($"Shipped commitment / route model: {ks[0].Name}");
+            log($"Best estimator fix (21 Oct) by catch rate: {Pick(Fixes(ks[0]), worlds, log).Name}");
             return ks[0];
+        }
+
+        /// SampleScene report (21 Oct): steps at 8-15 m are placed +-4.7-5.8 m. Reference F0 = the estimator before
+        /// the fixes; F1 inverse-variance weights in the velocity fit, F2 confidence fit counts only the residual the
+        /// hearing error does not explain, F3 both. (clampPrediction needs walls - TrackerGraph has none - so it is
+        /// tested in the core checks' warehouse run instead.)
+        public static Config[] Fixes(Config k)
+        {
+            var list = new Config[4];
+            for (int i = 0; i < list.Length; i++) list[i] = k;
+            list[0].Name = "F0 before 21 Oct";         list[0].Tweak = s => { s.errorWeighting = false; s.fitNoiseCorrected = false; };
+            list[1].Name = "F1 error-weighted v";      list[1].Tweak = s => { s.errorWeighting = true; s.fitNoiseCorrected = false; };
+            list[2].Name = "F2 noise-corrected fit";   list[2].Tweak = s => { s.errorWeighting = false; s.fitNoiseCorrected = true; };
+            list[3].Name = "F3 both";                  list[3].Tweak = s => { s.errorWeighting = true; s.fitNoiseCorrected = true; };
+            return list;
+        }
+
+        /// Stage F alone on the shipped config (scratch / quick re-runs).
+        public static Config RunFixes(Action<string> log)
+        {
+            var worlds = new[] { ("sandbox", SandboxTrackerLayout.BuildGraph(out _)), ("lattice", Lattice(10, 10, 6f, 12345)) };
+            var shipped = new TrackerSettings();
+            var k = new Config("shipped", shipped.routeLead, shipped.gateAdvantage, shipped.wProx, shipped.wDir, shipped.wAdv, shipped.wHeat,
+                               shipped.etaFromGait, shipped.runToIntercept, shipped.playerEtaSpeed)
+                    { RunAdvMin = shipped.runAdvMin, AdvMode = shipped.advMode };
+            return Pick(Fixes(k), worlds, log);
         }
 
         static Config Pick(Config[] configs, (string, TrackerGraph)[] worlds, Action<string> log)
@@ -258,6 +287,7 @@ namespace Echo.EditorTools
             if (c.SwitchMargin.HasValue) s.switchMargin = c.SwitchMargin.Value;
             if (c.Anchor.HasValue) s.anchor = c.Anchor.Value;
             if (c.PointRoute.HasValue) s.pointRoute = c.PointRoute.Value;
+            c.Tweak?.Invoke(s);
             var routes = new RouteService(g, s);
 
             // Runner route (>= 36 m) and Tracker start (15-35 m by route from the runner).

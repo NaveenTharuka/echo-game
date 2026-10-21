@@ -83,6 +83,14 @@ namespace Echo.AI.Tracker
         int Nearest(Vector3 p);
     }
 
+    /// Optional on an ITrackerWorld that knows its walls (the graph alone does not). Used to stop the extrapolated
+    /// player position where a straight walk from `from` towards `to` would hit a wall or leave the walkable area.
+    public interface ITrackerWalkable
+    {
+        /// The furthest walkable point on the segment from -> to (`to` itself if the walk is clear or unknown).
+        Vector3 ClampWalk(Vector3 from, Vector3 to);
+    }
+
     /// How the Tracker's body moves. NavMeshTrackerMover now; an AgentMotor adapter when M4's code lands.
     public interface ITrackerMover
     {
@@ -125,6 +133,13 @@ namespace Echo.AI.Tracker
         public float velocityPrior = 3f;
         [Tooltip("Speed (m/s) at which the direction of v is fully trusted; dir terms scale by min(1, |v| / this).")]
         public float dirSpeedRef = 1f;
+        [Tooltip("Inverse-variance weights in the velocity fit: a sound counts 1 / (err^2 + errorFloor^2). Same result as " +
+                 "before when every error is equal.")]
+        public bool errorWeighting = false;   // 21 Oct, not adopted: sweep stage F +16/-13 (z = 0.56), warehouse U-run
+                                              // x1000 +81/-96 (z = -1.13). The shrinkage already tames uniform +-5 m noise.
+        [Tooltip("Metres added (in quadrature) to every error so a near-exact sound cannot take all the weight " +
+                 "(= Hearing.minPositionError).")]
+        public float errorFloor = 0.5f;
 
         [Header("Agent")]
         public float runSpeed = 5f;
@@ -169,11 +184,18 @@ namespace Echo.AI.Tracker
         public float heatDecay = 0.995f;
         [Tooltip("Below this best S(n) the prediction explains nothing: investigate the latest sound instead.")]
         public float minInterceptScore = 0.5f;
+        [Tooltip("Stop the predicted point where the player would hit a wall (worlds that implement ITrackerWalkable, " +
+                 "e.g. NavMesh.Raycast in the NavGraph adapter). Else a 5 m/s line runs through the warehouse wall.")]
+        public bool clampPrediction = true;   // 21 Oct: predictions past a wall 10 % -> 0 %; catches unchanged (+1/-3)
 
         [Header("Confidence")]
         public float freshnessTau = 8f;
         public float evidenceObs = 3f;
         public float fitScale = 3f;
+        [Tooltip("fit = exp(-excess / fitScale), excess = sqrt(max(0, rms^2 - noiseRms^2)): only the residual the hearing " +
+                 "error does not explain counts against the line (else +-5 m sounds keep C below the Run band).")]
+        public bool fitNoiseCorrected = false;   // 21 Oct, not adopted: sweep +13/-10 (z = 0.63), warehouse +24/-30 (z = -0.82);
+                                                 // runToIntercept already runs to claimed goals in the Walk band.
         public float runThreshold = 0.55f;
         public float walkThreshold = 0.25f;
         public float hysteresis = 0.1f;

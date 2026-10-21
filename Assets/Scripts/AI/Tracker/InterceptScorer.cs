@@ -33,7 +33,8 @@ namespace Echo.AI.Tracker
     ///   route(p_last, n) <= v_max * lead + reachSlack,   reachable by the Tracker (no locked door).
     /// Each candidate is scored
     ///   S(n) = wProx*prox + wDir*dir + wAdv*adv + wHeat*heat
-    ///   prox = exp(-|n - p_pred|^2 / (2 sigma^2))          close to the extrapolated point
+    ///   prox = exp(-|n - p_pred|^2 / (2 sigma^2))          close to the extrapolated point (stopped at walls when
+    ///                                                       the world is ITrackerWalkable)
     ///   dir  = min(1, |v|/dirSpeedRef) * max(0, cos(v, n - p_last))   in the direction the player is going
     ///   adv  = clamp((ETA_player - ETA_tracker) / advScale, -1, 1)   the Tracker gets there first
     ///   heat = normalised heat                              where the player has been heard before
@@ -112,6 +113,9 @@ namespace Echo.AI.Tracker
                 pred = last.Position + v * lead;
                 if (!s.routeLead) break;          // straight-line lead: the guide's two-step estimate
             }
+            // The player cannot run through a wall: stop the extrapolation where the walk is blocked (prox then pulls
+            // to nodes near that wall, where the player must turn, not to nodes behind it).
+            if (s.clampPrediction && w is ITrackerWalkable walk) pred = walk.ClampWalk(last.Position, pred);
             Predicted = pred; Lead = lead;
             Reach = s.maxPlayerSpeed * lead + s.reachSlack;
 
