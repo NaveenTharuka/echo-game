@@ -158,7 +158,7 @@ namespace Echo.Player
         void ShowHint()
         {
             hintShown = true;
-            HudMessage.Show("[C]  Crouch - quiet.   Sprinting wears you out - and they hear you breathe.", 5f);
+            HudMessage.Show("[C]  Crouch to move quietly", 4f);   // short: the HUD line has a fixed width
         }
 
         void OnDied()
