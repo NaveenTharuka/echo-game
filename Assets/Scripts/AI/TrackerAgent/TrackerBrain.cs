@@ -15,6 +15,15 @@ namespace Echo.AI
         [Tooltip("All Tracker tunables (owned by the Tracker core).")]
         public TrackerSettings settings = new();
 
+        [Header("Intercept stopgap (adapter, until the core damps its target)")]
+        [Tooltip("Keep an intercept target at least this long (s) unless the new one is much better.")]
+        public float minTargetHold = 1.5f;
+        [Tooltip("'Much better' = the core scores the new node this many times higher than the held one.")]
+        public float muchBetterRatio = 1.5f;
+        [Tooltip("Ignore new intercept targets that are not on the NavMesh (keep the current one).")]
+        public bool ignoreOffMeshTargets = true;
+        int heldNode = -1; float heldSince = -99f; TrackerGait heldGait;
+
         readonly NavGraphTrackerWorld world = new();
         readonly List<TrackerPercept> percepts = new();
         TrackerDecider decider;
@@ -36,7 +45,7 @@ namespace Echo.AI
 
         public TrackerDecider Decider => decider;
         public override string DisplayName => "TRACKER";
-        public override string StateName => decider == null ? "NoGraph" : decider.State.ToString();
+        public override string StateName => !IsAlive ? "Dead" : decider == null ? "NoGraph" : decider.State.ToString();
         public override float AlertLevel => decider == null ? 0f : decider.State switch
         {
             TrackerState.Attack => 1f,
@@ -83,6 +92,7 @@ namespace Echo.AI
 
             var cmd = decider.Tick(input, percepts);
             Execute(cmd);
+            CatchUpWithCore();
             Present();
         }
 
@@ -91,15 +101,42 @@ namespace Echo.AI
             switch (cmd.Kind)
             {
                 case TrackerCommandKind.MoveTo:
+                    if (KeepHeldTarget(cmd)) break;
                     Motor.MoveTo(cmd.Target, cmd.Gait == TrackerGait.Run ? AgentMotor.Gait.Run : AgentMotor.Gait.Walk);
+                    bool intercept = decider.State == TrackerState.Intercept;
+                    heldNode = intercept ? decider.GoalNode : -1; heldSince = Time.time; heldGait = cmd.Gait;
                     break;
                 case TrackerCommandKind.Stop:
-                    Motor.Stop();
+                    Motor.Stop(); heldNode = -1;
                     break;
                 case TrackerCommandKind.Attack:
-                    Body.TryAttack(cmd.Target);
+                    Body.TryAttack(cmd.Target); heldNode = -1;
                     break;
             }
+        }
+
+        /// The core does not re-send a goal it thinks we already follow: once the hold is over, take it up.
+        void CatchUpWithCore()
+        {
+            if (heldNode < 0 || decider.State != TrackerState.Intercept || !decider.HasGoal) return;
+            if (decider.GoalNode == heldNode || Time.time - heldSince < minTargetHold) return;
+            if (!UnityEngine.AI.NavMesh.SamplePosition(decider.Goal, out _, 1f, UnityEngine.AI.NavMesh.AllAreas)) return;
+            var gait = decider.Band == ConfidenceBand.Run ? TrackerGait.Run : TrackerGait.Walk;
+            Motor.MoveTo(decider.Goal, gait == TrackerGait.Run ? AgentMotor.Gait.Run : AgentMotor.Gait.Walk);
+            heldNode = decider.GoalNode; heldSince = Time.time; heldGait = gait;
+        }
+
+        /// Stopgap: in Intercept, ignore a new target off the NavMesh, or one issued within minTargetHold of
+        /// the last that the core does not score much higher (same gait). Other states pass straight through.
+        bool KeepHeldTarget(in TrackerCommand cmd)
+        {
+            if (decider.State != TrackerState.Intercept || heldNode < 0 || !Motor.IsMoving) return false;
+            if (ignoreOffMeshTargets && !UnityEngine.AI.NavMesh.SamplePosition(cmd.Target, out _, 1f, UnityEngine.AI.NavMesh.AllAreas)) return true;
+            if (cmd.Gait != heldGait || Time.time - heldSince >= minTargetHold) return false;
+            var scores = decider.Scorer.Scores;
+            int n = decider.GoalNode;
+            if (n < 0 || n >= scores.Length || heldNode >= scores.Length) return false;
+            return scores[n] < scores[heldNode] * muchBetterRatio;
         }
 
         /// Animation cues from state changes (the brain still never touches the Animator itself).

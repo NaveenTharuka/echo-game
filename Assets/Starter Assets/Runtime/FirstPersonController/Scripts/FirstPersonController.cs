@@ -129,7 +129,21 @@ namespace StarterAssets
 			// The Sci-Fi lab floor prefabs are on Unity layer 9. Always include that
 			// layer so an inspector override cannot make the player fall through the lab.
 			int floorLayers = GroundLayers.value | 1 | (1 << 9);
-			Grounded = _controller.isGrounded || Physics.CheckSphere(spherePosition, GroundedRadius, floorLayers, QueryTriggerInteraction.Ignore);
+			Grounded = _controller.isGrounded || TouchesGround(spherePosition, floorLayers);
+		}
+
+		// The player sits on the same layer as the SampleScene floors (8), so the check must skip
+		// its own colliders, otherwise it is always "grounded" and can jump again in mid-air.
+		private readonly Collider[] _groundHits = new Collider[16];
+
+		private bool TouchesGround(Vector3 spherePosition, int floorLayers)
+		{
+			int count = Physics.OverlapSphereNonAlloc(spherePosition, GroundedRadius, _groundHits, floorLayers, QueryTriggerInteraction.Ignore);
+			for (int i = 0; i < count; i++)
+			{
+				if (!_groundHits[i].transform.IsChildOf(transform)) return true;
+			}
+			return false;
 		}
 
 		private void CameraRotation()

@@ -40,7 +40,7 @@ namespace Echo.AI
         {
             IsAttacking = true;
             motor.Stop();
-            anim?.Attack();
+            if (anim != null) anim.Attack();
             float t = 0f;
             while (t < windup) { motor.FaceTowards(towards, 720f); t += Time.deltaTime; yield return null; }
             IsAttacking = false;
@@ -65,11 +65,11 @@ namespace Echo.AI
             if (IsDead)
             {
                 StopAllCoroutines(); IsAttacking = false;
-                motor.Stop(); anim?.Die();
+                motor.Stop(); if (anim != null) anim.Die();
                 if (body) body.enabled = false;
                 return;
             }
-            anim?.Hit();
+            if (anim != null) anim.Hit();
             brain.OnHurt(from);
         }
 
@@ -77,7 +77,7 @@ namespace Echo.AI
         {
             Health = maxHealth;
             if (body) body.enabled = true;
-            anim?.Revive();
+            if (anim != null) anim.Revive();
         }
 
         void OnDrawGizmosSelected()

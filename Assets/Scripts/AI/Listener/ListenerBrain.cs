@@ -51,7 +51,7 @@ namespace Echo.AI
         bool headingPoint;                                // searchList[0] is "where it was heading"
 
         public override string DisplayName => "LISTENER";
-        public override string StateName => state.ToString();
+        public override string StateName => IsAlive ? state.ToString() : "Dead";
         public override float AlertLevel => state switch { State.Investigate => 0.7f, State.Search => 0.6f,
                                                            State.Attack => 1f, State.Alert => 0.8f,
                                                            _ => OnEdge ? 0.4f : state == State.Suspicious ? 0.3f : 0f };
@@ -137,7 +137,7 @@ namespace Echo.AI
                     break;
 
                 case State.Return:
-                    if (Arrived || Failed) { Motor.LookAt(transform.position + HomeRotation * Vector3.forward); Enter(State.Idle); }
+                    if (Arrived || Failed) { Motor.LookAt(transform.position + HomeRotation * Vector3.forward * 10f); Enter(State.Idle); }   // far point: small settling doesn't skew the angle
                     break;
 
                 case State.Attack:

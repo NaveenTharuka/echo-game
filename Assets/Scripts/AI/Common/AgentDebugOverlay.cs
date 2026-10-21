@@ -22,8 +22,11 @@ namespace Echo.AI
         void OnGUI()
         {
             if (!visible) return;
-            style ??= new GUIStyle(GUI.skin.label) { richText = true, fontSize = 14 };
-            GUILayout.BeginArea(new Rect(10, 10, 480, 400), GUI.skin.box);
+            style ??= new GUIStyle(GUI.skin.label) { richText = true, fontSize = 14, wordWrap = true };
+            // Inside the screen with a margin, so nothing is clipped on small Game views.
+            const float margin = 16f;
+            float w = Mathf.Min(480f, Screen.width - 2f * margin), h = Mathf.Min(400f, Screen.height - 2f * margin);
+            GUILayout.BeginArea(new Rect(margin, margin, w, h), GUI.skin.box);
             GUILayout.Label($"<b>AGENTS</b>  (F1 hide, F2/F3/F4 time {Time.timeScale:0.##}x)", style);
             foreach (var a in AgentRegistry.All)
                 GUILayout.Label($"<b>{a.DisplayName}</b>  [{a.StateName}]  alert {a.AlertLevel:0.0}\n{a.DebugText}", style);
