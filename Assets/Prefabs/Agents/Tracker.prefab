@@ -259,6 +259,7 @@ GameObject:
   - component: {fileID: 5246475489333571990}
   - component: {fileID: 1200001138580559712}
   - component: {fileID: 1125485130829959798}
+  - component: {fileID: 4566785690743177704}
   m_Layer: 10
   m_Name: Tracker
   m_TagString: Untagged
@@ -561,6 +562,25 @@ MonoBehaviour:
   alertInterval: {x: 0.6, y: 1.1}
   pitch: {x: 0.9, y: 1.15}
   volume: 0.8
+--- !u!114 &4566785690743177704
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7942255178022054256}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 125365b6160ef4c49a3d1bcc25ff0c8b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Echo.AI.AgentPatrol
+  patrolEnabled: 1
+  zones: []
+  radius: 18
+  gait: 1
+  pause: {x: 2, y: 6}
+  minLeg: 7
+  lookAround: 0.6
 --- !u!1001 &3053533464772905914
 PrefabInstance:
   m_ObjectHideFlags: 0
