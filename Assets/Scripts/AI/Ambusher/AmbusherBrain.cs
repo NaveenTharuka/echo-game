@@ -41,6 +41,9 @@ namespace Echo.AI
         [Tooltip("A sound this close (m) during the pursuit window triggers another lunge.")]
         public float pursuitRange = 10f;
         public int maxLunges = 3;
+        [Header("Alarm")]
+        [Tooltip("After an alarm: how long it lies in wait on the escape route (s).")]
+        public float alarmWait = 60f;
 
         RouteModel model;
         State state = State.Observe;
@@ -50,6 +53,7 @@ namespace Echo.AI
         Dictionary<string, float> lastPass = new();
         string predictedFrom;   // zone the player was in when the ambush was chosen
         float pursueUntil = -1f; int lunges;
+        float waitLimit = -1f; int approachNode = -1;   // alarm ambush: longer wait, face the way the prey comes
 
         // Read by the Mimic (guide §11) - keep these three stable.
         public bool HasAmbushPoint => ambushNode >= 0 && state is State.MoveToAmbush or State.Wait;
@@ -99,6 +103,7 @@ namespace Echo.AI
                 case State.Relocate:
                     if (stateTime > 1f && TrySelectAmbush()) BeginMove();
                     else if (state == State.Relocate && (Arrived || Failed)) Enter(State.Observe, "back home");
+                    else if (state == State.Observe && Time.time >= pursueUntil) PatrolTick();   // prowl, keep listening
                     break;
 
                 case State.MoveToAmbush:
@@ -114,7 +119,8 @@ namespace Echo.AI
                                             !lastPass.ContainsKey(model.CurrentZone) &&
                                             model.CurrentZone != predictedFrom &&     // still where it was heard: not off route
                                             model.CurrentZone != NavGraph.Instance.Node(ambushNode).zone;
-                    if (stateTime > waitTimeout) Relocate(AgentMotor.Gait.Sneak, $"nobody came in {waitTimeout:0} s");
+                    float limit = waitLimit > 0f ? waitLimit : waitTimeout;
+                    if (stateTime > limit) Relocate(AgentMotor.Gait.Sneak, $"nobody came in {limit:0} s");
                     else if (predictionBroken) Relocate(AgentMotor.Gait.Sneak, $"player heard in {model.CurrentZone}, off the predicted route");
                     break;
 
@@ -131,6 +137,34 @@ namespace Echo.AI
                     }
                     break;
             }
+        }
+
+        /// Alarm: the prey is at `at` and will run for the way out. It knows the building, not the player: take the route
+        /// from the alarm to its own territory, and wait at the first good spot where that route enters it.
+        public override void OnAlarm(Vector3 at)
+        {
+            var g = NavGraph.Instance;
+            if (!IsAlive || model == null || g == null || state == State.Attack) return;
+            var path = new List<int>();
+            if (!AStar.FindPath(g, g.Nearest(at), g.Nearest(Home), path) || path.Count == 0) return;
+            string[] territory = Patrol != null && Patrol.zones != null && Patrol.zones.Length > 0
+                ? Patrol.zones : new[] { g.Node(g.Nearest(Home)).zone };
+            int pick = -1, firstInside = -1;
+            for (int i = 0; i < path.Count; i++)
+            {
+                var node = g.Node(path[i]);
+                if (System.Array.IndexOf(territory, node.zone) < 0) continue;
+                if (firstInside < 0) firstInside = i;
+                if ((node.tags & (NodeTag.AmbushSpot | NodeTag.Doorway)) != 0) { pick = i; break; }
+                if (i - firstInside >= 3) break;   // don't wait deep inside: be at the edge it comes through
+            }
+            if (pick < 0) pick = firstInside;
+            if (pick < 0) return;
+            ambushNode = path[pick];
+            approachNode = pick > 0 ? path[pick - 1] : -1;
+            lastPass.Clear(); confidence = 1f; predictedFrom = ZoneVolume.ZoneAt(at);
+            waitLimit = alarmWait; lastUsed[ambushNode] = Time.time;
+            BeginMove();
         }
 
         bool TrySelectAmbush()
@@ -161,6 +195,7 @@ namespace Echo.AI
             }
             if (best < 0) return false;
             ambushNode = best; lastUsed[best] = Time.time; predictedFrom = model.CurrentZone;
+            waitLimit = -1f; approachNode = -1;
             return true;
         }
 
@@ -194,6 +229,7 @@ namespace Echo.AI
         {
             var g = NavGraph.Instance; Vector3 best = transform.position + transform.forward; float bp = -1f;
             if (ambushNode < 0) return best;
+            if (approachNode >= 0) return g.Position(approachNode);
             foreach (var e in g.Neighbours(ambushNode))
             {
                 string z = g.Node(e.To).zone ?? "";
@@ -245,6 +281,7 @@ namespace Echo.AI
 
         void Enter(State s, string why)
         {
+            if (s != State.Observe) PatrolStop();
             if (logDecisions) Debug.Log($"[AMBUSHER t={Time.time:0.0}] {state} -> {s}: {why}", this);
             state = s; stateTime = 0f;
             Arrived = Failed = false;
