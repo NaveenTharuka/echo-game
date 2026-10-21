@@ -96,6 +96,9 @@ namespace Echo.AI
             stateTime += thinkInterval;
             switch (state)
             {
+                case State.Idle:
+                    PatrolTick();   // prowl its territory until something is heard
+                    break;
                 case State.Suspicious:
                     if (stateTime > suspiciousWait)
                     {
@@ -248,6 +251,7 @@ namespace Echo.AI
 
         void Enter(State s)
         {
+            if (s != State.Idle) PatrolStop();
             state = s; stateTime = 0f;
             Arrived = Failed = false;   // a motor event from the previous state must not end the new one
             if (Anim) Anim.SetListening(s == State.Suspicious);

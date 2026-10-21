@@ -258,6 +258,7 @@ GameObject:
   - component: {fileID: 5987250955302869358}
   - component: {fileID: 5425140967916769162}
   - component: {fileID: 2126591248520804558}
+  - component: {fileID: 7508016321892039242}
   m_Layer: 10
   m_Name: Ambusher
   m_TagString: Untagged
@@ -521,6 +522,25 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Echo.AI.AgentWaitAudio
   source: {fileID: 2575356798936167949}
+--- !u!114 &7508016321892039242
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3449800611307214349}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 125365b6160ef4c49a3d1bcc25ff0c8b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Echo.AI.AgentPatrol
+  patrolEnabled: 1
+  zones: []
+  radius: 18
+  gait: 0
+  pause: {x: 2, y: 6}
+  minLeg: 7
+  lookAround: 0.6
 --- !u!1 &8625591270091546272
 GameObject:
   m_ObjectHideFlags: 0

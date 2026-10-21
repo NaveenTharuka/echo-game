@@ -98,6 +98,14 @@ namespace Echo.AI
 
         void Execute(in TrackerCommand cmd)
         {
+            // Idle core (nothing heard, or gave up): prowl the territory instead of standing at the post.
+            // Only the adapter does this - the core's decisions are untouched; an attack always goes through.
+            if (decider.State == TrackerState.Idle && cmd.Kind != TrackerCommandKind.Attack)
+            {
+                PatrolTick();
+                return;
+            }
+            PatrolStop();
             switch (cmd.Kind)
             {
                 case TrackerCommandKind.MoveTo:

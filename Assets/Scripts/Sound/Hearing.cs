@@ -65,7 +65,10 @@ namespace Echo.Sound
         /// A pack call (PackCall): another agent's cry, heard from `callerPosition`, tells "the prey is around
         /// `estimate`". It arrives as a running step there with the caller's uncertainty (at least `minCallError`),
         /// so it is only as good as the caller's own hearing - never the player's true position.
-        public bool HearCall(Vector3 callerPosition, float callIntensity, Vector3 estimate, float error, int eventId = 0)
+        /// perceivedLoudness >= 0: how urgent the call sounds wherever it is audible (an alarm siren), instead of
+        /// the distance-based loudness capped at callLoudnessCap.
+        public bool HearCall(Vector3 callerPosition, float callIntensity, Vector3 estimate, float error, int eventId = 0,
+                             float perceivedLoudness = -1f)
         {
             Vector3 ear = transform.position + Vector3.up * earHeight;
             float loud = Acoustics.Loudness(callIntensity, EffectiveSensitivity, Acoustics.EffectiveDistance(callerPosition, ear));
@@ -79,7 +82,8 @@ namespace Echo.Sound
             inbox.Add(new PerceivedSound
             {
                 EventId = eventId, Type = SoundType.Run, EstimatedPosition = guess,
-                PositionError = err, Loudness = Mathf.Min(loud, callLoudnessCap), TimeHeard = Time.time
+                PositionError = err, Loudness = perceivedLoudness >= 0f ? perceivedLoudness : Mathf.Min(loud, callLoudnessCap),
+                TimeHeard = Time.time
             });
             Heard?.Invoke(inbox[inbox.Count - 1]);
             return true;
