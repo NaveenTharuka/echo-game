@@ -137,6 +137,14 @@ namespace Echo.AI.Tracker
 
         void Execute(in TrackerCommand cmd)
         {
+            // Idle core (nothing heard, or gave up): prowl the territory (AgentPatrol) instead of standing at the post.
+            // Only this adapter does it - the decider is untouched; an attack always goes through.
+            if (decider.State == TrackerState.Idle && cmd.Kind != TrackerCommandKind.Attack)
+            {
+                PatrolTick();
+                return;
+            }
+            PatrolStop();
             switch (cmd.Kind)
             {
                 case TrackerCommandKind.MoveTo:
@@ -164,7 +172,8 @@ namespace Echo.AI.Tracker
                     calm = false;
                 }
             }
-            if (Anim) Anim.SetListening(st is TrackerState.Analyse or TrackerState.Hold);
+            bool patrolling = Patrol != null && Patrol.IsPatrolling;         // the patrol owns the pose at its stops
+            if (Anim && !patrolling) Anim.SetListening(st is TrackerState.Analyse or TrackerState.Hold);
             if (st is TrackerState.Analyse or TrackerState.Hold && !Motor.IsMoving && decider.Memory.HasLast)
                 Motor.LookAt(decider.Predicted);                            // face where it thinks the player is
             lastState = st;
