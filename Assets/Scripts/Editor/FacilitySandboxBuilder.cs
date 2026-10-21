@@ -127,6 +127,7 @@ namespace Echo.EditorTools
 
             bool playerOk = ListenerSandboxBuilder.CopyPlayer(spawn, spawnRot);
             FixGroundLayers(env);
+            FixInteractMask(env);
 
             var agents = new GameObject("Agents").transform;
             Place(agents, AgentAssetBuilder.Listener, ListenerHome, 90f);
@@ -389,6 +390,20 @@ namespace Echo.EditorTools
                 var prop = so.FindProperty("GroundLayers");
                 if (prop == null) continue;
                 prop.intValue |= (1 << env) | (1 << 0) | (1 << 8);
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+        }
+
+        /// Door leaves are moved to Environment (they block sound), so the player's interact cast must target that
+        /// layer too, or closed doors can no longer be used. Walls on Environment have no IInteractable → no focus.
+        internal static void FixInteractMask(int env)
+        {
+            var player = GameObject.Find("PlayerCapsule");
+            if (player == null) return;
+            foreach (var interactor in player.GetComponentsInChildren<PlayerInteractor>(true))
+            {
+                var so = new SerializedObject(interactor);
+                so.FindProperty(nameof(PlayerInteractor.interactableMask)).intValue |= 1 << env;
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
         }

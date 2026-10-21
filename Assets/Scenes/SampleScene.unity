@@ -37696,6 +37696,7 @@ GameObject:
   - component: {fileID: 853219491}
   - component: {fileID: 853219490}
   - component: {fileID: 853219489}
+  - component: {fileID: 853219494}
   m_Layer: 0
   m_Name: Systems
   m_TagString: Untagged
@@ -37778,6 +37779,23 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &853219494
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 853219488}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cab10564d3a55794c84ad60f9576acaf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Echo.Sound.TensionMusic
+  calmLoop: {fileID: 8300000, guid: 175f68e13ffd3b64b8f059df2cd47893, type: 3}
+  huntLoop: {fileID: 8300000, guid: e770a4914401bda40aacc88b099f41c7, type: 3}
+  calmVolume: 0.25
+  huntVolume: 0.45
+  fade: 2.5
 --- !u!1 &857376908
 GameObject:
   m_ObjectHideFlags: 0
@@ -73209,7 +73227,7 @@ MonoBehaviour:
   castRadius: 0.1
   interactableMask:
     serializedVersion: 2
-    m_Bits: 1
+    m_Bits: 513
   occluderMask:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -88927,7 +88945,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &2062915442
 Transform:
   m_ObjectHideFlags: 0
