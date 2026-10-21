@@ -1,0 +1,758 @@
+[
+ {
+  "file": "Player/Breath/Calm/Breath_Calm_In_01.wav",
+  "source": "Normal_breathing.mp3",
+  "seconds": 1.35,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Calm/Breath_Calm_Out_01.wav",
+  "source": "Normal_breathing.mp3",
+  "seconds": 1.62,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Calm/Breath_Calm_In_02.wav",
+  "source": "Normal_breathing.mp3",
+  "seconds": 1.3,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Calm/Breath_Calm_Out_02.wav",
+  "source": "Normal_breathing.mp3",
+  "seconds": 1.06,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Calm/Breath_Calm_In_03.wav",
+  "source": "Normal_breathing.mp3",
+  "seconds": 1.41,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Calm/Breath_Calm_Out_03.wav",
+  "source": "Normal_breathing.mp3",
+  "seconds": 1.49,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Calm/Breath_Calm_In_04.wav",
+  "source": "Normal_breathing.mp3",
+  "seconds": 1.37,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Calm/Breath_Calm_In_05.wav",
+  "source": "Normal_breathing.mp3",
+  "seconds": 1.28,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Calm/Breath_Calm_Out_04.wav",
+  "source": "Normal_breathing.mp3",
+  "seconds": 1.53,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Calm/Breath_Calm_Out_05.wav",
+  "source": "Normal_breathing.mp3",
+  "seconds": 1.18,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Calm/Breath_Calm_Out_06.wav",
+  "source": "Normal_breathing.mp3",
+  "seconds": 1.57,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Calm/Breath_Calm_In_06.wav",
+  "source": "Normal_breathing.mp3",
+  "seconds": 1.08,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Heavy/Breath_Heavy_In_01.wav",
+  "source": "breathing_after_scare.mp3",
+  "seconds": 0.82,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Heavy/Breath_Heavy_Out_01.wav",
+  "source": "breathing_after_scare.mp3",
+  "seconds": 0.97,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Heavy/Breath_Heavy_In_02.wav",
+  "source": "breathing_after_scare.mp3",
+  "seconds": 0.81,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Heavy/Breath_Heavy_Out_02.wav",
+  "source": "breathing_after_scare.mp3",
+  "seconds": 0.92,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Heavy/Breath_Heavy_In_03.wav",
+  "source": "breathing_after_scare.mp3",
+  "seconds": 0.76,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Heavy/Breath_Heavy_Out_03.wav",
+  "source": "breathing_after_scare.mp3",
+  "seconds": 0.92,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Heavy/Breath_Heavy_In_04.wav",
+  "source": "breathing_after_scare.mp3",
+  "seconds": 0.84,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Heavy/Breath_Heavy_Out_04.wav",
+  "source": "breathing_after_scare.mp3",
+  "seconds": 0.66,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Exhausted/Breath_Exhausted_In_01.wav",
+  "source": "fast_breathing.mp3",
+  "seconds": 0.47,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Exhausted/Breath_Exhausted_Out_01.wav",
+  "source": "fast_breathing.mp3",
+  "seconds": 0.57,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Exhausted/Breath_Exhausted_Out_02.wav",
+  "source": "fast_breathing.mp3",
+  "seconds": 0.52,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Exhausted/Breath_Exhausted_Out_03.wav",
+  "source": "fast_breathing.mp3",
+  "seconds": 0.6,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Exhausted/Breath_Exhausted_In_02.wav",
+  "source": "fast_breathing.mp3",
+  "seconds": 0.54,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Exhausted/Breath_Exhausted_Out_04.wav",
+  "source": "fast_breathing.mp3",
+  "seconds": 0.58,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Exhausted/Breath_Exhausted_Out_05.wav",
+  "source": "fast_breathing.mp3",
+  "seconds": 0.61,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Exhausted/Breath_Exhausted_Out_06.wav",
+  "source": "fast_breathing.mp3",
+  "seconds": 0.64,
+  "note": "exhale"
+ },
+ {
+  "file": "Player/Breath/Exhausted/Breath_Exhausted_In_03.wav",
+  "source": "fast_breathing.mp3",
+  "seconds": 0.52,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Exhausted/Breath_Exhausted_In_04.wav",
+  "source": "fast_breathing.mp3",
+  "seconds": 0.48,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Exhausted/Breath_Exhausted_In_05.wav",
+  "source": "fast_breathing.mp3",
+  "seconds": 0.3,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Breath/Exhausted/Breath_Exhausted_In_06.wav",
+  "source": "fast_breathing.mp3",
+  "seconds": 0.49,
+  "note": "inhale"
+ },
+ {
+  "file": "Player/Heartbeat/Heartbeat_Calm_Loop.wav",
+  "source": "normal_heartbeat.mp3",
+  "seconds": 7.27,
+  "note": "66 bpm, 8 beats, seamless"
+ },
+ {
+  "file": "Player/Heartbeat/Heartbeat_Fast_Loop.wav",
+  "source": "normal_heartbeat.mp3",
+  "seconds": 4.8,
+  "note": "100 bpm, 8 beats, seamless"
+ },
+ {
+  "file": "Player/Heartbeat/Heartbeat_Pound_Loop.wav",
+  "source": "normal_heartbeat.mp3",
+  "seconds": 3.38,
+  "note": "142 bpm, 8 beats, seamless"
+ },
+ {
+  "file": "Objectives/Alarm_Siren_Loop.wav",
+  "source": "alarm_siren.mp3",
+  "seconds": 24.27,
+  "note": "3 cycles of 8.09 s, seamless"
+ },
+ {
+  "file": "Objectives/Alarm_Siren_Start.wav",
+  "source": "alarm_siren.mp3",
+  "seconds": 6.06,
+  "note": "the siren winding up (plays once before the loop)"
+ },
+ {
+  "file": "SFX/Jump/Jump_01.wav",
+  "source": "player_jump.mp3",
+  "seconds": 0.75,
+  "note": "jump take-off"
+ },
+ {
+  "file": "SFX/Jump/Jump_02.wav",
+  "source": "player_jump.mp3",
+  "seconds": 0.68,
+  "note": "jump take-off"
+ },
+ {
+  "file": "SFX/Jump/Jump_03.wav",
+  "source": "player_jump.mp3",
+  "seconds": 0.66,
+  "note": "jump take-off"
+ },
+ {
+  "file": "Player/DryFire/DryFire_01.wav",
+  "source": "dry_fire_click.mp3",
+  "seconds": 0.49,
+  "note": "trigger + hammer"
+ },
+ {
+  "file": "Player/DryFire/DryFire_02.wav",
+  "source": "dry_fire_click.mp3",
+  "seconds": 0.24,
+  "note": "trigger only"
+ },
+ {
+  "file": "Player/DryFire/DryFire_03.wav",
+  "source": "dry_fire_click.mp3",
+  "seconds": 0.54,
+  "note": "duller"
+ },
+ {
+  "file": "SFX/Gunshot/Gunshot_Shotgun_01.wav",
+  "source": "shotgun_fire_with_reload.mp3",
+  "seconds": 2.4,
+  "note": "shotgun blast + pump in the tail"
+ },
+ {
+  "file": "SFX/Gunshot/Gunshot_Shotgun_01_Far.wav",
+  "source": "shotgun_fire_with_reload.mp3",
+  "seconds": 3.16,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/Gunshot/Gunshot_Shotgun_02.wav",
+  "source": "shotgun_fire_with_reload.mp3",
+  "seconds": 1.88,
+  "note": "blast, slightly darker/lower"
+ },
+ {
+  "file": "SFX/Gunshot/Gunshot_Shotgun_02_Far.wav",
+  "source": "shotgun_fire_with_reload.mp3",
+  "seconds": 3.05,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/Reload/ShotgunPump_01.wav",
+  "source": "shotgun_fire_with_reload.mp3",
+  "seconds": 0.45,
+  "note": "pump"
+ },
+ {
+  "file": "Agents/Listener/Listener_Scream_01.wav",
+  "source": "listener_scream.mp3",
+  "seconds": 5.6,
+  "note": "full scream (alert / pack call)"
+ },
+ {
+  "file": "Agents/Listener/Listener_Scream_01_Far.wav",
+  "source": "listener_scream.mp3",
+  "seconds": 6.13,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "Agents/Listener/Listener_Scream_02.wav",
+  "source": "listener_scream.mp3",
+  "seconds": 1.8,
+  "note": "short scream"
+ },
+ {
+  "file": "Agents/Listener/Listener_Scream_02_Far.wav",
+  "source": "listener_scream.mp3",
+  "seconds": 3.04,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "Agents/Listener/Listener_Hurt_01.wav",
+  "source": "listener_scream.mp3",
+  "seconds": 0.65,
+  "note": "hurt bark (slice of the scream)"
+ },
+ {
+  "file": "Agents/Listener/Listener_Hurt_02.wav",
+  "source": "listener_scream.mp3",
+  "seconds": 0.72,
+  "note": "hurt bark (slice of the scream)"
+ },
+ {
+  "file": "Agents/Listener/Listener_Hurt_03.wav",
+  "source": "listener_scream.mp3",
+  "seconds": 0.61,
+  "note": "hurt bark (slice of the scream)"
+ },
+ {
+  "file": "Agents/Listener/Listener_Attack_01.wav",
+  "source": "listener_scream.mp3",
+  "seconds": 0.76,
+  "note": "attack snarl"
+ },
+ {
+  "file": "Agents/Listener/Listener_Attack_02.wav",
+  "source": "listener_scream.mp3",
+  "seconds": 0.7,
+  "note": "attack snarl"
+ },
+ {
+  "file": "Agents/Listener/Listener_Death_01.wav",
+  "source": "listener_scream.mp3",
+  "seconds": 3.9,
+  "note": "death (scream, lower)"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Scream_01.wav",
+  "source": "ambusher_scream.mp3",
+  "seconds": 5.3,
+  "note": "full scream (alert / pack call)"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Scream_01_Far.wav",
+  "source": "ambusher_scream.mp3",
+  "seconds": 5.75,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Scream_02.wav",
+  "source": "ambusher_scream.mp3",
+  "seconds": 2.0,
+  "note": "short scream"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Scream_02_Far.wav",
+  "source": "ambusher_scream.mp3",
+  "seconds": 3.48,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Hurt_01.wav",
+  "source": "ambusher_scream.mp3",
+  "seconds": 0.65,
+  "note": "hurt bark (slice of the scream)"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Hurt_02.wav",
+  "source": "ambusher_scream.mp3",
+  "seconds": 0.72,
+  "note": "hurt bark (slice of the scream)"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Hurt_03.wav",
+  "source": "ambusher_scream.mp3",
+  "seconds": 0.61,
+  "note": "hurt bark (slice of the scream)"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Attack_01.wav",
+  "source": "ambusher_scream.mp3",
+  "seconds": 0.76,
+  "note": "attack snarl"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Attack_02.wav",
+  "source": "ambusher_scream.mp3",
+  "seconds": 0.7,
+  "note": "attack snarl"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Death_01.wav",
+  "source": "ambusher_scream.mp3",
+  "seconds": 3.9,
+  "note": "death (scream, lower)"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Scream_01.wav",
+  "source": "tracker_scream.mp3",
+  "seconds": 7.0,
+  "note": "full scream (alert / pack call)"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Scream_01_Far.wav",
+  "source": "tracker_scream.mp3",
+  "seconds": 6.65,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Scream_02.wav",
+  "source": "tracker_scream.mp3",
+  "seconds": 2.0,
+  "note": "short scream"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Scream_02_Far.wav",
+  "source": "tracker_scream.mp3",
+  "seconds": 3.41,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Hurt_01.wav",
+  "source": "tracker_scream.mp3",
+  "seconds": 0.65,
+  "note": "hurt bark (slice of the scream)"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Hurt_02.wav",
+  "source": "tracker_scream.mp3",
+  "seconds": 0.72,
+  "note": "hurt bark (slice of the scream)"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Hurt_03.wav",
+  "source": "tracker_scream.mp3",
+  "seconds": 0.61,
+  "note": "hurt bark (slice of the scream)"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Attack_01.wav",
+  "source": "tracker_scream.mp3",
+  "seconds": 0.76,
+  "note": "attack snarl"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Attack_02.wav",
+  "source": "tracker_scream.mp3",
+  "seconds": 0.7,
+  "note": "attack snarl"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Death_01.wav",
+  "source": "tracker_scream.mp3",
+  "seconds": 3.9,
+  "note": "death (scream, lower)"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Step_01.wav",
+  "source": "ambusher_footsteps.mp3",
+  "seconds": 0.75,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Step_02.wav",
+  "source": "ambusher_footsteps.mp3",
+  "seconds": 0.75,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Step_03.wav",
+  "source": "ambusher_footsteps.mp3",
+  "seconds": 0.75,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Step_04.wav",
+  "source": "ambusher_footsteps.mp3",
+  "seconds": 0.75,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Ambusher/Ambusher_Step_05.wav",
+  "source": "ambusher_footsteps.mp3",
+  "seconds": 0.75,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Step_01.wav",
+  "source": "other_agents_footsteps.mp3",
+  "seconds": 0.6,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Step_02.wav",
+  "source": "other_agents_footsteps.mp3",
+  "seconds": 0.6,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Step_03.wav",
+  "source": "other_agents_footsteps.mp3",
+  "seconds": 0.6,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Step_04.wav",
+  "source": "other_agents_footsteps.mp3",
+  "seconds": 0.6,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Tracker/Tracker_Step_05.wav",
+  "source": "other_agents_footsteps.mp3",
+  "seconds": 0.6,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Mimic/Mimic_Step_01.wav",
+  "source": "other_agents_footsteps.mp3",
+  "seconds": 0.51,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Mimic/Mimic_Step_02.wav",
+  "source": "other_agents_footsteps.mp3",
+  "seconds": 0.51,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Mimic/Mimic_Step_03.wav",
+  "source": "other_agents_footsteps.mp3",
+  "seconds": 0.51,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Mimic/Mimic_Step_04.wav",
+  "source": "other_agents_footsteps.mp3",
+  "seconds": 0.51,
+  "note": "single step"
+ },
+ {
+  "file": "Agents/Mimic/Mimic_Step_05.wav",
+  "source": "other_agents_footsteps.mp3",
+  "seconds": 0.46,
+  "note": "single step"
+ },
+ {
+  "file": "SFX/GlassBreak/BottleSmash_01_Far.wav",
+  "source": "BottleSmash_01.wav",
+  "seconds": 2.7,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/GlassBreak/GlassBreak_01_Far.wav",
+  "source": "GlassBreak_01.wav",
+  "seconds": 2.16,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/MetalImpact/CanDrop_01_Far.wav",
+  "source": "CanDrop_01.wav",
+  "seconds": 2.85,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/MetalImpact/MetalImpact_01_Far.wav",
+  "source": "MetalImpact_01.wav",
+  "seconds": 2.77,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/MetalImpact/MetalImpact_02_Far.wav",
+  "source": "MetalImpact_02.wav",
+  "seconds": 2.63,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/MetalImpact/MetalImpact_03_Far.wav",
+  "source": "MetalImpact_03.wav",
+  "seconds": 2.91,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/MetalImpact/MetalImpact_04_Far.wav",
+  "source": "MetalImpact_04.wav",
+  "seconds": 2.9,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/MetalImpact/MetalImpact_05_Far.wav",
+  "source": "MetalImpact_05.wav",
+  "seconds": 2.92,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/MetalImpact/MetalImpact_06_Far.wav",
+  "source": "MetalImpact_06.wav",
+  "seconds": 3.03,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/Door/DoorSlam_01_Far.wav",
+  "source": "DoorSlam_01.wav",
+  "seconds": 3.63,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/Door/Door_01_Far.wav",
+  "source": "Door_01.wav",
+  "seconds": 4.31,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/Door/Door_02_Far.wav",
+  "source": "Door_02.wav",
+  "seconds": 4.81,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/Door/Door_03_Far.wav",
+  "source": "Door_03.wav",
+  "seconds": 4.76,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/Generator/Generator_01_Far.wav",
+  "source": "Generator_01.wav",
+  "seconds": 2.82,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/Land/Land_01_Far.wav",
+  "source": "Land_01.wav",
+  "seconds": 2.41,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/Land/Land_02_Far.wav",
+  "source": "Land_02.wav",
+  "seconds": 2.67,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/ObjectDrop/ObjectDrop_01_Far.wav",
+  "source": "ObjectDrop_01.wav",
+  "seconds": 2.85,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/ObjectDrop/ObjectDrop_02_Far.wav",
+  "source": "ObjectDrop_02.wav",
+  "seconds": 2.56,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/ObjectDrop/ObjectDrop_03_Far.wav",
+  "source": "ObjectDrop_03.wav",
+  "seconds": 2.5,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/BulletImpact/BulletImpact_01_Far.wav",
+  "source": "BulletImpact_01.wav",
+  "seconds": 2.64,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/BulletImpact/BulletImpact_02_Far.wav",
+  "source": "BulletImpact_02.wav",
+  "seconds": 2.84,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/BulletImpact/BulletImpact_03_Far.wav",
+  "source": "BulletImpact_03.wav",
+  "seconds": 2.86,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/BulletImpact/BulletImpact_04_Far.wav",
+  "source": "BulletImpact_04.wav",
+  "seconds": 2.85,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/BulletImpact/BulletImpact_05_Far.wav",
+  "source": "BulletImpact_05.wav",
+  "seconds": 2.67,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/BulletImpact/BulletImpact_06_Far.wav",
+  "source": "BulletImpact_06.wav",
+  "seconds": 2.72,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/BulletImpact/Ricochet_01_Far.wav",
+  "source": "Ricochet_01.wav",
+  "seconds": 2.12,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/BulletImpact/Ricochet_02_Far.wav",
+  "source": "Ricochet_02.wav",
+  "seconds": 2.12,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "SFX/BulletImpact/Ricochet_03_Far.wav",
+  "source": "Ricochet_03.wav",
+  "seconds": 2.12,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "Agents/Common/AgentVoice_01_Far.wav",
+  "source": "AgentVoice_01.wav",
+  "seconds": 2.31,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "Agents/Common/AgentVoice_02_Far.wav",
+  "source": "AgentVoice_02.wav",
+  "seconds": 2.44,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "Agents/Common/AgentVoice_03_Far.wav",
+  "source": "AgentVoice_03.wav",
+  "seconds": 2.52,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "Agents/Common/AgentVoice_04_Far.wav",
+  "source": "AgentVoice_04.wav",
+  "seconds": 2.64,
+  "note": "distant version (baked): air absorption + facility tail"
+ },
+ {
+  "file": "Agents/Common/AgentVoice_05_Far.wav",
+  "source": "AgentVoice_05.wav",
+  "seconds": 2.35,
+  "note": "distant version (baked): air absorption + facility tail"
+ }
+]
