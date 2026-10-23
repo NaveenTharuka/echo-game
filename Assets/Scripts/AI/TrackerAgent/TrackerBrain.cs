@@ -1,0 +1,199 @@
+using System;
+using System.Collections.Generic;
+using Echo.AI.Tracker;
+using Echo.Sound;
+using UnityEngine;
+
+namespace Echo.AI
+{
+    /// TRACKER body adapter (guide §10). All decisions are made by the Tracker core (`TrackerDecider`, plain C#,
+    /// Echo.AI.Tracker): memory, credibility gate, velocity estimate, interception scoring, confidence, FSM.
+    /// This MonoBehaviour only feeds it what the agent perceives (PerceivedSounds, touch, being shot) and executes
+    /// its commands through the shared AgentMotor / AgentBody / AgentAnimatorBridge.
+    public class TrackerBrain : AgentBrain
+    {
+        [Tooltip("All Tracker tunables (owned by the Tracker core).")]
+        public TrackerSettings settings = new();
+
+        [Header("Intercept stopgap (adapter, until the core damps its target)")]
+        [Tooltip("Keep an intercept target at least this long (s) unless the new one is much better.")]
+        public float minTargetHold = 1.5f;
+        [Tooltip("'Much better' = the core scores the new node this many times higher than the held one.")]
+        public float muchBetterRatio = 1.5f;
+        [Tooltip("Ignore new intercept targets that are not on the NavMesh (keep the current one).")]
+        public bool ignoreOffMeshTargets = true;
+        int heldNode = -1; float heldSince = -99f; TrackerGait heldGait;
+
+        readonly NavGraphTrackerWorld world = new();
+        readonly List<TrackerPercept> percepts = new();
+        TrackerDecider decider;
+        bool touched, hurt; Vector3 touchPoint, hurtFrom;
+        TrackerState lastState = TrackerState.Idle;
+        bool calm = true;
+
+        static readonly HeardKind[] KindOf = BuildKindMap();
+
+        /// SoundType -> HeardKind by name (the core mirrors the frozen enum on purpose, so it never depends on Echo.Sound).
+        static HeardKind[] BuildKindMap()
+        {
+            var names = Enum.GetNames(typeof(SoundType));
+            var map = new HeardKind[names.Length];
+            for (int i = 0; i < names.Length; i++)
+                map[i] = Enum.TryParse(names[i], out HeardKind k) ? k : HeardKind.AgentVoice;   // AgentVoice = ignored by the core
+            return map;
+        }
+
+        public TrackerDecider Decider => decider;
+        public override string DisplayName => "TRACKER";
+        public override string StateName => !IsAlive ? "Dead" : decider == null ? "NoGraph" : decider.State.ToString();
+        public override float AlertLevel => decider == null ? 0f : decider.State switch
+        {
+            TrackerState.Attack => 1f,
+            TrackerState.Intercept => decider.Band == ConfidenceBand.Run ? 0.9f : 0.75f,
+            TrackerState.Hold => 0.6f,
+            TrackerState.Search => 0.5f,
+            TrackerState.Analyse => 0.4f,
+            _ => 0f
+        };
+        public override float CurrentInterest => decider == null ? 0f : decider.Confidence.Value;
+        public override string DebugText => decider == null ? "waiting for NavGraph" :
+            $"C={decider.Confidence.Value:0.00} band={decider.Band} mem={decider.Memory.Count} " +
+            $"acc/sus/filt={decider.Accepted}/{decider.Suspects}/{decider.Filtered}" +
+            (decider.HasVelocity ? $" v={decider.Velocity.magnitude:0.0}m/s" : "");
+
+        protected override void Awake()
+        {
+            base.Awake();
+            settings.walkSpeed = Motor.walkSpeed;
+            settings.runSpeed = Motor.runSpeed;
+        }
+
+        protected override void Think()
+        {
+            if (decider == null)
+            {
+                if (!world.Ready) return;                                   // NavGraph builds in Start
+                decider = new TrackerDecider(world, settings, Home);
+            }
+
+            // PERCEPTION: what the ear reported, as the core's percept type. Being shot = a precise gunshot.
+            percepts.Clear();
+            foreach (var s in NewSounds)
+                percepts.Add(new TrackerPercept(s.EstimatedPosition, s.PositionError, s.TimeHeard, KindOf[(int)s.Type]));
+            if (hurt) { percepts.Add(new TrackerPercept(hurtFrom, 2f, Time.time, HeardKind.Gunshot)); hurt = false; }
+
+            var input = new TrackerTickInput
+            {
+                Now = Time.time, Self = transform.position,
+                Arrived = Arrived, Failed = Failed,
+                Touched = touched, TouchPoint = touchPoint
+            };
+            touched = false;
+
+            var cmd = decider.Tick(input, percepts);
+            Execute(cmd);
+            CatchUpWithCore();
+            Present();
+        }
+
+        void Execute(in TrackerCommand cmd)
+        {
+            // Idle core (nothing heard, or gave up): prowl the territory instead of standing at the post.
+            // Only the adapter does this - the core's decisions are untouched; an attack always goes through.
+            if (decider.State == TrackerState.Idle && cmd.Kind != TrackerCommandKind.Attack)
+            {
+                PatrolTick();
+                return;
+            }
+            PatrolStop();
+            switch (cmd.Kind)
+            {
+                case TrackerCommandKind.MoveTo:
+                    if (KeepHeldTarget(cmd)) break;
+                    Motor.MoveTo(cmd.Target, cmd.Gait == TrackerGait.Run ? AgentMotor.Gait.Run : AgentMotor.Gait.Walk);
+                    bool intercept = decider.State == TrackerState.Intercept;
+                    heldNode = intercept ? decider.GoalNode : -1; heldSince = Time.time; heldGait = cmd.Gait;
+                    break;
+                case TrackerCommandKind.Stop:
+                    Motor.Stop(); heldNode = -1;
+                    break;
+                case TrackerCommandKind.Attack:
+                    Body.TryAttack(cmd.Target); heldNode = -1;
+                    break;
+            }
+        }
+
+        /// The core does not re-send a goal it thinks we already follow: once the hold is over, take it up.
+        void CatchUpWithCore()
+        {
+            if (heldNode < 0 || decider.State != TrackerState.Intercept || !decider.HasGoal) return;
+            if (decider.GoalNode == heldNode || Time.time - heldSince < minTargetHold) return;
+            if (!UnityEngine.AI.NavMesh.SamplePosition(decider.Goal, out _, 1f, UnityEngine.AI.NavMesh.AllAreas)) return;
+            var gait = decider.Band == ConfidenceBand.Run ? TrackerGait.Run : TrackerGait.Walk;
+            Motor.MoveTo(decider.Goal, gait == TrackerGait.Run ? AgentMotor.Gait.Run : AgentMotor.Gait.Walk);
+            heldNode = decider.GoalNode; heldSince = Time.time; heldGait = gait;
+        }
+
+        /// Stopgap: in Intercept, ignore a new target off the NavMesh, or one issued within minTargetHold of
+        /// the last that the core does not score much higher (same gait). Other states pass straight through.
+        bool KeepHeldTarget(in TrackerCommand cmd)
+        {
+            if (decider.State != TrackerState.Intercept || heldNode < 0 || !Motor.IsMoving) return false;
+            if (ignoreOffMeshTargets && !UnityEngine.AI.NavMesh.SamplePosition(cmd.Target, out _, 1f, UnityEngine.AI.NavMesh.AllAreas)) return true;
+            if (cmd.Gait != heldGait || Time.time - heldSince >= minTargetHold) return false;
+            var scores = decider.Scorer.Scores;
+            int n = decider.GoalNode;
+            if (n < 0 || n >= scores.Length || heldNode >= scores.Length) return false;
+            return scores[n] < scores[heldNode] * muchBetterRatio;
+        }
+
+        /// Animation cues from state changes (the brain still never touches the Animator itself).
+        void Present()
+        {
+            var st = decider.State;
+            if (st != lastState)
+            {
+                if (st == TrackerState.Idle) calm = true;
+                else if (st == TrackerState.Intercept)
+                {
+                    if (calm && decider.Band == ConfidenceBand.Run && Anim) Anim.Alert();   // locks on before the chase
+                    calm = false;
+                }
+            }
+            if (Anim) Anim.SetListening(st is TrackerState.Analyse or TrackerState.Hold);
+            if (st is TrackerState.Analyse or TrackerState.Hold && !Motor.IsMoving && decider.Memory.HasLast)
+                Motor.LookAt(decider.Predicted);   // turn towards where it thinks the player is
+            lastState = st;
+        }
+
+        public override void OnContact(Vector3 where) { touched = true; touchPoint = where; }
+
+        public override void OnHurt(Vector3 from) { hurt = true; hurtFrom = from; }
+
+        public override void ResetAgent()
+        {
+            base.ResetAgent();
+            decider?.Reset();
+            lastState = TrackerState.Idle; calm = true;
+        }
+
+        void OnDrawGizmosSelected()
+        {
+            if (!Application.isPlaying || decider == null) return;
+            if (decider.Memory.HasLast)
+            {
+                Gizmos.color = new Color(1f, 0.5f, 0f);
+                Gizmos.DrawWireSphere(decider.Memory.Last.Position, 0.4f);
+                if (decider.HasVelocity) Gizmos.DrawLine(decider.Memory.Last.Position, decider.Memory.Last.Position + decider.Velocity * 2f);
+                Gizmos.color = Color.red;
+                Gizmos.DrawWireSphere(decider.Predicted, 0.6f);
+            }
+            if (decider.HasGoal)
+            {
+                Gizmos.color = Color.green;
+                Gizmos.DrawLine(transform.position + Vector3.up, decider.Goal);
+                Gizmos.DrawWireCube(decider.Goal, Vector3.one * 0.5f);
+            }
+        }
+    }
+}

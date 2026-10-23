@@ -42,6 +42,8 @@ namespace StarterAssets
 		public float GroundedRadius = 0.5f;
 		[Tooltip("What layers the character uses as ground")]
 		public LayerMask GroundLayers;
+		[Tooltip("ECHO: walking off a step at most this high (m) keeps the feet on the ground (stairs, ramps). 0 = off")]
+		public float GroundSnapDistance = 0.5f;
 
 		[Header("Cinemachine")]
 		[Tooltip("The follow target set in the Cinemachine Virtual Camera that the camera will follow")]
@@ -71,6 +73,11 @@ namespace StarterAssets
 		private CharacterController _controller;
 		private StarterAssetsInputs _input;
 		private GameObject _mainCamera;
+		// ECHO hooks (set by Echo.Player.PlayerExertion: stamina, exhaustion, crouch). This assembly cannot see game code.
+		/// (sprintHeld, walkSpeed, sprintSpeed) -> target speed. Null = Starter Assets behaviour.
+		public System.Func<bool, float, float, float> TargetSpeedOverride;
+		/// False = no jump now (crouched, out of breath). Null = always allowed.
+		public System.Func<bool> JumpAllowed;
 
 		private const float _threshold = 0.01f;
 
@@ -129,7 +136,21 @@ namespace StarterAssets
 			// The Sci-Fi lab floor prefabs are on Unity layer 9. Always include that
 			// layer so an inspector override cannot make the player fall through the lab.
 			int floorLayers = GroundLayers.value | 1 | (1 << 9);
-			Grounded = _controller.isGrounded || Physics.CheckSphere(spherePosition, GroundedRadius, floorLayers, QueryTriggerInteraction.Ignore);
+			Grounded = _controller.isGrounded || TouchesGround(spherePosition, floorLayers);
+		}
+
+		// The player sits on the same layer as the SampleScene floors (8), so the check must skip
+		// its own colliders, otherwise it is always "grounded" and can jump again in mid-air.
+		private readonly Collider[] _groundHits = new Collider[16];
+
+		private bool TouchesGround(Vector3 spherePosition, int floorLayers)
+		{
+			int count = Physics.OverlapSphereNonAlloc(spherePosition, GroundedRadius, _groundHits, floorLayers, QueryTriggerInteraction.Ignore);
+			for (int i = 0; i < count; i++)
+			{
+				if (!_groundHits[i].transform.IsChildOf(transform)) return true;
+			}
+			return false;
 		}
 
 		private void CameraRotation()
@@ -157,7 +178,9 @@ namespace StarterAssets
 		private void Move()
 		{
 			// set target speed based on move speed, sprint speed and if sprint is pressed
-			float targetSpeed = _input.sprint ? SprintSpeed : MoveSpeed;
+			// (ECHO: stamina / crouch decide the real speed when PlayerExertion is present)
+			float targetSpeed = TargetSpeedOverride != null ? TargetSpeedOverride(_input.sprint, MoveSpeed, SprintSpeed)
+			                                                : (_input.sprint ? SprintSpeed : MoveSpeed);
 
 			// a simplistic acceleration and deceleration designed to be easy to remove, replace, or iterate upon
 
@@ -198,7 +221,41 @@ namespace StarterAssets
 			}
 
 			// move the player
-			_controller.Move(inputDirection.normalized * (_speed * Time.deltaTime) + new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime);
+			Vector3 horizontal = inputDirection.normalized * (_speed * Time.deltaTime);
+			Vector3 vertical = new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime;
+
+			// ECHO: stick to stairs and slopes going down instead of flying off each step. Done inside the one Move,
+			// so the controller's velocity stays the real walking velocity (footsteps and head bob read it).
+			// Also just after walking off an edge (the controller loses contact the frame it passes the step's lip).
+			_airTime = _controller.isGrounded ? 0f : _airTime + Time.deltaTime;
+			if (GroundSnapDistance > 0f && _airTime < 0.15f && _verticalVelocity <= 0.0f)
+			{
+				float drop = FloorDropAt(transform.position + horizontal);
+				if (drop > 0f) vertical.y = Mathf.Min(vertical.y, -(drop + 0.02f));
+			}
+			_controller.Move(horizontal + vertical);
+		}
+
+		// ECHO: how far below the feet the floor is at `feet` (0 = none within GroundSnapDistance). Own colliders are
+		// skipped: the player shares layer 8 with the SampleScene floors.
+		private readonly RaycastHit[] _snapHits = new RaycastHit[8];
+		private float _airTime;
+
+		private float FloorDropAt(Vector3 feet)
+		{
+			float r = _controller.radius * 0.9f;
+			const float lift = 0.05f;
+			Vector3 origin = feet + Vector3.up * (r + lift);
+			int floorLayers = GroundLayers.value | 1 | (1 << 9);
+			int count = Physics.SphereCastNonAlloc(origin, r, Vector3.down, _snapHits, GroundSnapDistance + lift, floorLayers, QueryTriggerInteraction.Ignore);
+			float best = float.MaxValue;
+			for (int i = 0; i < count; i++)
+			{
+				if (_snapHits[i].transform.IsChildOf(transform) || _snapHits[i].distance <= 0f) continue;
+				if (_snapHits[i].normal.y < 0.6f) continue;   // walls and steep slopes are not floors
+				best = Mathf.Min(best, _snapHits[i].distance);
+			}
+			return best < float.MaxValue ? Mathf.Max(0f, best - lift) : 0f;
 		}
 
 		private void JumpAndGravity()
@@ -215,6 +272,8 @@ namespace StarterAssets
 				}
 
 				// Jump
+				// ECHO: no jump while crouched or out of breath (and the press is not saved for later)
+				if (_input.jump && JumpAllowed != null && !JumpAllowed()) _input.jump = false;
 				if (_input.jump && _jumpTimeoutDelta <= 0.0f)
 				{
 					// the square root of H * -2 * G = how much velocity needed to reach desired height

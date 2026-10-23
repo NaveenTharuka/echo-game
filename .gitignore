@@ -19,6 +19,13 @@
 /[Uu]ser[Ss]ettings/
 *.log
 
+# Local Claude Code context (personal, not shared)
+/CLAUDE.local.md
+
+# Unity crash-recovery scenes
+/[Aa]ssets/_Recovery/
+/[Aa]ssets/_Recovery.meta
+
 # By default unity supports Blender asset imports, *.blend1 blender files do not need to be commited to version control.
 *.blend1
 *.blend1.meta
