@@ -167,7 +167,7 @@ namespace Echo.AI
             approachNode = pick > 0 ? path[pick - 1] : -1;
             lastPass.Clear(); confidence = 1f; predictedFrom = ZoneVolume.ZoneAt(at);
             waitLimit = alarmWait; lastUsed[ambushNode] = Time.time;
-            BeginMove();
+            BeginMove($"alarm in {predictedFrom ?? "?"}: A* escape route enters my territory");
         }
 
         bool TrySelectAmbush()
@@ -217,10 +217,11 @@ namespace Echo.AI
             Relocate(AgentMotor.Gait.Sneak, "could not reach the ambush point");
         }
 
-        void BeginMove()
+        void BeginMove(string why = null)
         {
             moveRetries = 1;
-            Enter(State.MoveToAmbush, $"predicted route from {model.CurrentZone}, conf {confidence:0.00} -> {NavGraph.Instance.Node(ambushNode).name} ({NavGraph.Instance.Node(ambushNode).zone})");
+            var node = NavGraph.Instance.Node(ambushNode);
+            Enter(State.MoveToAmbush, $"{why ?? $"predicted route from {model.CurrentZone}"}, conf {confidence:0.00} -> {node.name} ({node.zone})");
             Motor.MoveTo(AmbushPoint, AgentMotor.Gait.Run);
         }
 
