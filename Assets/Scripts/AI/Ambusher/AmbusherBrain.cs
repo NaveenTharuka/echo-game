@@ -26,6 +26,8 @@ namespace Echo.AI
         [Tooltip("Reflex strike in any state for a precise sound this close (m).")]
         public float closeStrike = 3f;
         public float waitTimeout = 25f, minConfidence = 0.35f, minScore = 0.2f, playerSpeedGuess = 2.5f;
+        [Tooltip("Blocked on the way to the ambush point but this close (m): wait here instead of giving the ambush up.")]
+        public float closeEnoughToWait = 4f;
         [Tooltip("Commit only after the player was heard leaving the current zone this many times (decayed). " +
                  "With few neighbour zones the uniform prior alone already passes minConfidence.")]
         public float minEvidence = 1.8f;
@@ -54,6 +56,7 @@ namespace Echo.AI
         string predictedFrom;   // zone the player was in when the ambush was chosen
         float pursueUntil = -1f; int lunges;
         float waitLimit = -1f; int approachNode = -1;   // alarm ambush: longer wait, face the way the prey comes
+        int moveRetries;                                 // re-plans left for the current ambush move
 
         // Read by the Mimic (guide §11) - keep these three stable.
         public bool HasAmbushPoint => ambushNode >= 0 && state is State.MoveToAmbush or State.Wait;
@@ -109,7 +112,7 @@ namespace Echo.AI
                 case State.MoveToAmbush:
                     if (Vector3.Distance(transform.position, AmbushPoint) < 8f) Motor.SetGait(AgentMotor.Gait.Sneak);
                     if (Arrived) BeginWait();
-                    else if (Failed) Relocate(AgentMotor.Gait.Sneak, "could not reach the ambush point");
+                    else if (Failed) OnAmbushMoveFailed();
                     break;
 
                 case State.Wait:
@@ -199,8 +202,24 @@ namespace Echo.AI
             return true;
         }
 
+        /// The motor reports "stuck" when it makes no progress for a while - near the goal that is usually another agent
+        /// in the way (local avoidance in a corridor), not an unreachable spot. Close enough: wait right here. Further:
+        /// re-plan once (the blocker has usually moved on). Only then give the ambush up.
+        void OnAmbushMoveFailed()
+        {
+            float left = Vector3.Distance(transform.position, AmbushPoint);
+            if (left <= closeEnoughToWait) { BeginWait(); return; }
+            if (moveRetries-- > 0 && Motor.MoveTo(AmbushPoint, AgentMotor.Gait.Run))
+            {
+                if (logDecisions) Debug.Log($"[AMBUSHER t={Time.time:0.0}] blocked {left:0.0} m short of the ambush point, re-planning", this);
+                return;
+            }
+            Relocate(AgentMotor.Gait.Sneak, "could not reach the ambush point");
+        }
+
         void BeginMove()
         {
+            moveRetries = 1;
             Enter(State.MoveToAmbush, $"predicted route from {model.CurrentZone}, conf {confidence:0.00} -> {NavGraph.Instance.Node(ambushNode).name} ({NavGraph.Instance.Node(ambushNode).zone})");
             Motor.MoveTo(AmbushPoint, AgentMotor.Gait.Run);
         }
