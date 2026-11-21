@@ -32,14 +32,18 @@ namespace Echo.Gameplay
         public float exitRadius = 3f;
 
         [Header("Generator (fusebox)")]
-        [Tooltip("Start-up roar the AI hears (intensity x 45 m x sensitivity).")]
+        [Tooltip("Start-up roar the AI hears (intensity x 45 m x sensitivity). The Tracker treats machines as ambient.")]
         public float generatorIntensity = 0.75f;
+        [Tooltip("The breaker lever slamming home: a player-made metal clank, the cue the Tracker follows. 1 = 45 m, the " +
+                 "loudest single sound; it covers about half of the Tracker's patrol, so where it is decides the risk.")]
+        [Range(0f, 1f)] public float leverClankIntensity = 1f;
 
         [Header("Alarm (medicine)")]
         public float alarmSeconds = 75f;
         public float wailInterval = 6f;
-        [Tooltip("Pack-call strength of each wail: big enough to reach the whole facility through its corridors.")]
-        public float alarmCallIntensity = 3f;
+        [Tooltip("How far each wail carries, in metres of sound route (corridors, not straight line). The farthest agent " +
+                 "post is ~182 m from the Lab; below ~220 m the Tracker in the warehouse never hears the alarm.")]
+        public float alarmCallRange = 240f;
         [Tooltip("How urgent a wail sounds to an agent (0..1): high enough that hunters run, not stroll.")]
         public float alarmLoudness = 0.9f;
         public float alarmError = 6f;
@@ -88,7 +92,7 @@ namespace Echo.Gameplay
             // The generator coughs into life: loud, mechanical, right where the Tracker hunts.
             Vector3 p = powerSwitch.transform.position;
             Noise.Make(SoundType.Generator, p, generatorIntensity, SoundSource.Player, powerSwitch.gameObject);
-            Noise.Make(SoundType.MetalImpact, p, generatorIntensity * 0.7f, SoundSource.Player, powerSwitch.gameObject);
+            Noise.Make(SoundType.MetalImpact, p, leverClankIntensity, SoundSource.Player, powerSwitch.gameObject);
             HudMessage.Show("Power restored. That was loud.", 3f);
             TryOpenLab();
         }
@@ -157,7 +161,7 @@ namespace Echo.Gameplay
             foreach (var a in AgentRegistry.All)
             {
                 if (a == null || !a.IsAlive) continue;
-                if (a.TryGetComponent(out Hearing ear) && ear.HearCall(at, alarmCallIntensity, at, alarmError, perceivedLoudness: alarmLoudness)
+                if (a.TryGetComponent(out Hearing ear) && ear.HearCall(at, alarmCallRange / Acoustics.MetresPerIntensity, at, alarmError, perceivedLoudness: alarmLoudness)
                     && Time.time - alarmStart < 0.5f)
                     a.OnAlarm(at);   // the first wail: agents with a plan for an alarm make it now
             }
