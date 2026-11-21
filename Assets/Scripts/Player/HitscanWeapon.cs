@@ -52,6 +52,10 @@ namespace Echo.Player
 
         static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
         const float SparkSeconds = 0.08f;
+        /// URP Lit material for the runtime primitives. CreatePrimitive gives the built-in Standard material, whose
+        /// shader is not in a URP player build -> pink. A Resources material is always shipped.
+        const string PartMaterialPath = "Echo/RuntimeLit";
+        static Material partMaterial;
 
         PlayerInteractor interactor;
         PhysicsCarrier carrier;
@@ -219,6 +223,8 @@ namespace Echo.Player
             go.transform.localPosition = localPos;
             go.transform.localScale = scale;
             var r = go.GetComponent<Renderer>();
+            if (partMaterial == null) partMaterial = Resources.Load<Material>(PartMaterialPath);
+            if (partMaterial != null) r.sharedMaterial = partMaterial;
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             var block = new MaterialPropertyBlock();
             block.SetColor(BaseColor, color);
