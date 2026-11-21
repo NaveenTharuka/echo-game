@@ -154,7 +154,7 @@ namespace Echo.EditorTools
             ControllerPath = "Assets/Art/Characters/Ambusher/Animations/Ambusher.controller",
             PrefabPath = "Assets/Prefabs/Agents/Ambusher.prefab",
             BrainType = typeof(AmbusherBrain),
-            HearingSensitivity = 1.4f, RunSpeed = 5.5f, ChaseSpeed = 6.5f,     // best ears; short explosive lunges (guide §12.1). Run slide: 5.0 0 %, 5.5 2 %, 6.0 10 %, 6.5 17 %
+            HearingSensitivity = 1.4f, RunSpeed = 5.5f, ChaseSpeed = 6.5f,     // best ears; short explosive lunges (guide §12.1). Run clip 3 m/s: the bridge plays it up to 2.2x at chase speed
             AvoidancePriority = 55,
             AttackDamage = 50f,
             ModelScale = 0.8f,             // 3.0 m brute -> 2.4 m

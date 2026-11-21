@@ -1,9 +1,11 @@
 using System.Collections;
+using System.Collections.Generic;
 using Echo.AI;
 using Echo.Interaction;
 using Echo.Navigation;
 using Echo.Player;
 using Echo.Sound;
+using Echo.UI;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -18,7 +20,8 @@ namespace Echo.Gameplay
     ///     "something is at the Lab" (a call from there, never the player's position). The way out is the way in,
     ///     so the escape runs into the hunters coming the other way.
     ///   - Reaching the exit with the medicine wins.
-    /// Wired in SampleScene by ECHO > SampleScene > 7. Objectives. Shows a one-line objective at the top left.
+    /// Wired in SampleScene by ECHO > SampleScene > 7. Objectives. The current objectives (title, where, target point) are
+    /// published as `Active`; ObjectiveHud shows them at the top right and swaps them as each one is done.
     public class ObjectiveDirector : MonoBehaviour
     {
         public enum Stage { FindWay, OpenLab, TakeMedicine, Escape, Won }
@@ -32,14 +35,18 @@ namespace Echo.Gameplay
         public float exitRadius = 3f;
 
         [Header("Generator (fusebox)")]
-        [Tooltip("Start-up roar the AI hears (intensity x 45 m x sensitivity).")]
+        [Tooltip("Start-up roar the AI hears (intensity x 45 m x sensitivity). The Tracker treats machines as ambient.")]
         public float generatorIntensity = 0.75f;
+        [Tooltip("The breaker lever slamming home: a player-made metal clank, the cue the Tracker follows. 1 = 45 m, the " +
+                 "loudest single sound; it covers about half of the Tracker's patrol, so where it is decides the risk.")]
+        [Range(0f, 1f)] public float leverClankIntensity = 1f;
 
         [Header("Alarm (medicine)")]
         public float alarmSeconds = 75f;
         public float wailInterval = 6f;
-        [Tooltip("Pack-call strength of each wail: big enough to reach the whole facility through its corridors.")]
-        public float alarmCallIntensity = 3f;
+        [Tooltip("How far each wail carries, in metres of sound route (corridors, not straight line). The farthest agent " +
+                 "post is ~182 m from the Lab; below ~220 m the Tracker in the warehouse never hears the alarm.")]
+        public float alarmCallRange = 240f;
         [Tooltip("How urgent a wail sounds to an agent (0..1): high enough that hunters run, not stroll.")]
         public float alarmLoudness = 0.9f;
         public float alarmError = 6f;
@@ -48,13 +55,33 @@ namespace Echo.Gameplay
         [Tooltip("The same alarm over the facility's PA, everywhere (2D), so it is never lost entirely.")]
         public float paVolume = 0.22f;
 
+        [Header("Objective HUD")]
+        [Tooltip("Coming this close to the Lab door counts as having found the Lab.")]
+        public float labFoundRadius = 7f;
+
+        /// One line of the objective panel: what to do, where, and the point the HUD's arrow and distance point at.
+        public readonly struct Objective
+        {
+            public readonly string Id, Title, Detail;
+            public readonly Vector3 Target;
+            public Objective(string id, string title, string detail, Vector3 target)
+            { Id = id; Title = title; Detail = detail; Target = target; }
+        }
+
+        readonly List<Objective> active = new();
+        /// What the player should do right now (1-2 lines). Rebuilt on every step; empty once the level is won.
+        public IReadOnlyList<Objective> Active => active;
+        public bool FoundLab { get; private set; }
+        public bool LabOpened { get; private set; }
+        Vector3 labPos, powerPos, passPos, medicinePos, exitPos;
+
         public Stage Current { get; private set; } = Stage.FindWay;
         public bool HasPass { get; private set; }
         public bool PowerOn { get; private set; }
         public bool HasMedicine { get; private set; }
         public float ElapsedSeconds => Time.time - startTime;
 
-        Text objectiveLabel, bigLabel;
+        Text bigLabel;
         CanvasGroup bigGroup;
         AudioSource siren, sirenLab;
         AudioOcclusion sirenLabOcclusion;
@@ -75,6 +102,13 @@ namespace Echo.Gameplay
             if (medicine != null) medicine.onActivated.AddListener(OnMedicine);
             if (labDoor != null && !labDoor.isLocked) labDoor.Lock();   // pass + power, nothing less
 
+            // Targets are remembered now: pickups may hide or destroy themselves when taken.
+            labPos = labDoor != null ? labDoor.DoorwayCenter : transform.position;
+            powerPos = powerSwitch != null ? powerSwitch.transform.position : labPos;
+            passPos = accessPass != null ? accessPass.transform.position : labPos;
+            medicinePos = medicine != null ? medicine.transform.position : labPos;
+            exitPos = exit != null ? exit.position : labPos;
+
             BuildHud();
             Refresh();
         }
@@ -88,7 +122,7 @@ namespace Echo.Gameplay
             // The generator coughs into life: loud, mechanical, right where the Tracker hunts.
             Vector3 p = powerSwitch.transform.position;
             Noise.Make(SoundType.Generator, p, generatorIntensity, SoundSource.Player, powerSwitch.gameObject);
-            Noise.Make(SoundType.MetalImpact, p, generatorIntensity * 0.7f, SoundSource.Player, powerSwitch.gameObject);
+            Noise.Make(SoundType.MetalImpact, p, leverClankIntensity, SoundSource.Player, powerSwitch.gameObject);
             HudMessage.Show("Power restored. That was loud.", 3f);
             TryOpenLab();
         }
@@ -112,6 +146,7 @@ namespace Echo.Gameplay
         void OnInteracted(IInteractable what)
         {
             if (labDoor == null || !ReferenceEquals(what, labDoor) || !labDoor.isLocked) return;
+            if (!FoundLab) { FoundLab = true; Refresh(); }
             string need = !PowerOn && !HasPass ? "No power. And it needs the key card."
                         : !PowerOn ? "No power. The fusebox is somewhere in the warehouse."
                         : "Needs the key card from the Key room.";
@@ -132,6 +167,16 @@ namespace Echo.Gameplay
         void Update()
         {
             if (Current == Stage.Won) return;
+            if (!FoundLab && player != null && Vector3.Distance(player.position, labPos) <= labFoundRadius)
+            {
+                FoundLab = true;
+                Refresh();
+            }
+            if (!LabOpened && labDoor != null && !labDoor.isLocked && labDoor.isOpen)
+            {
+                LabOpened = true;
+                Refresh();
+            }
             if (HasMedicine && Time.time < alarmUntil && Time.time >= nextWail)
             {
                 nextWail = Time.time + wailInterval;
@@ -157,7 +202,7 @@ namespace Echo.Gameplay
             foreach (var a in AgentRegistry.All)
             {
                 if (a == null || !a.IsAlive) continue;
-                if (a.TryGetComponent(out Hearing ear) && ear.HearCall(at, alarmCallIntensity, at, alarmError, perceivedLoudness: alarmLoudness)
+                if (a.TryGetComponent(out Hearing ear) && ear.HearCall(at, alarmCallRange / Acoustics.MetresPerIntensity, at, alarmError, perceivedLoudness: alarmLoudness)
                     && Time.time - alarmStart < 0.5f)
                     a.OnAlarm(at);   // the first wail: agents with a plan for an alarm make it now
             }
@@ -166,6 +211,7 @@ namespace Echo.Gameplay
         void Win()
         {
             Current = Stage.Won;
+            active.Clear();                                    // the last objective (escape) completes on the HUD
             if (siren != null) siren.Stop();
             if (sirenLab != null) sirenLab.Stop();
             if (player != null)
@@ -198,16 +244,34 @@ namespace Echo.Gameplay
                     : HasPass && PowerOn ? Stage.TakeMedicine
                     : HasPass || PowerOn ? Stage.OpenLab
                     : Stage.FindWay;
-            if (objectiveLabel == null) return;
-            objectiveLabel.text = Current switch
+            if (HasPass || PowerOn) FoundLab = true;
+            if (HasMedicine) LabOpened = true;
+
+            active.Clear();
+            switch (Current)
             {
-                Stage.FindWay => "Find the medicine in the locked Lab",
-                Stage.OpenLab => !PowerOn ? "Restore power to the Lab door - fusebox, warehouse"
-                                          : "Find the key card - Key room, below the Lab stairs",
-                Stage.TakeMedicine => "Take the medicine from the Lab",
-                Stage.Escape => "Get out - back the way you came in",
-                _ => ""
-            };
+                case Stage.FindWay:
+                case Stage.OpenLab:
+                    if (!FoundLab)
+                    {
+                        active.Add(new Objective("lab", "Find the Lab", "The sealed bulkhead door, Containment wing", labPos));
+                        break;
+                    }
+                    if (!PowerOn)
+                        active.Add(new Objective("power", "Restore power to the Lab door", "Fusebox - west wall of the warehouse", powerPos));
+                    if (!HasPass)
+                        active.Add(new Objective("keycard", "Find the key card", "Key room - below the Lab stairs", passPos));
+                    break;
+                case Stage.TakeMedicine:
+                    if (!LabOpened)
+                        active.Add(new Objective("open", "Open the Lab door", "Power is on and you have the key card", labPos));
+                    else
+                        active.Add(new Objective("medicine", "Take the medicine", "Inside the Lab, by the east wall", medicinePos));
+                    break;
+                case Stage.Escape:
+                    active.Add(new Objective("escape", "Get out", "Back the way you came in. They heard the alarm.", exitPos));
+                    break;
+            }
         }
 
         void BuildHud()
@@ -220,9 +284,11 @@ namespace Echo.Gameplay
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize; scaler.referenceResolution = new Vector2(1920, 1080);
             var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
-            objectiveLabel = Label(canvasGo.transform, "Objective", font, 20, TextAnchor.UpperLeft,
-                                   new Vector2(0f, 1f), new Vector2(40f, -36f), new Vector2(900f, 40f));
-            objectiveLabel.color = new Color(0.85f, 0.85f, 0.8f, 0.75f);
+            var panel = new GameObject("Objectives", typeof(RectTransform));
+            panel.transform.SetParent(canvasGo.transform, false);
+            var prt = (RectTransform)panel.transform;
+            prt.anchorMin = Vector2.zero; prt.anchorMax = Vector2.one; prt.offsetMin = prt.offsetMax = Vector2.zero;
+            panel.AddComponent<ObjectiveHud>().Init(this, player, font);
 
             var end = new GameObject("End", typeof(RectTransform), typeof(Image), typeof(CanvasGroup));
             end.transform.SetParent(canvasGo.transform, false);

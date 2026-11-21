@@ -13,8 +13,9 @@ namespace Echo.Player
     /// No firing while carrying or dragging (hands full).
     ///
     /// Gun model: assign a prefab to `modelPrefab` - that is the whole swap. It is spawned under the camera at
-    /// `modelOffset`; a child named "Muzzle" marks the barrel tip (else the model root). Empty -> a primitive
-    /// placeholder is built at runtime (the project has no gun model yet).
+    /// `modelOffset`; a child named "Muzzle" marks the barrel tip (else the model root). Empty -> the default
+    /// shotgun in Resources/Echo/Weapons/Shotgun (ECHO > Player > Build Shotgun Model); if that is missing too,
+    /// a primitive placeholder is built at runtime.
     [DisallowMultipleComponent]
     [RequireComponent(typeof(PlayerInteractor))]
     public class HitscanWeapon : MonoBehaviour
@@ -34,7 +35,7 @@ namespace Echo.Player
         public float impactIntensity = 0.3f;
 
         [Header("Visuals")]
-        [Tooltip("Gun model prefab, spawned under the camera. Empty -> a primitive placeholder is built.")]
+        [Tooltip("Gun model prefab, spawned under the camera. Empty -> Resources/Echo/Weapons/Shotgun, else a primitive placeholder.")]
         public GameObject modelPrefab;
         [Tooltip("Model position in camera space.")]
         public Vector3 modelOffset = new(0.22f, -0.2f, 0.45f);
@@ -52,6 +53,11 @@ namespace Echo.Player
 
         static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
         const float SparkSeconds = 0.08f;
+        /// URP Lit material for the runtime primitives. CreatePrimitive gives the built-in Standard material, whose
+        /// shader is not in a URP player build -> pink. A Resources material is always shipped.
+        const string PartMaterialPath = "Echo/RuntimeLit";
+        const string DefaultModelPath = "Echo/Weapons/Shotgun";
+        static Material partMaterial;
 
         PlayerInteractor interactor;
         PhysicsCarrier carrier;
@@ -153,9 +159,10 @@ namespace Echo.Player
         void BuildModel()
         {
             Transform view = interactor.viewPoint != null ? interactor.viewPoint : transform;
-            if (modelPrefab != null)
+            GameObject prefab = modelPrefab != null ? modelPrefab : Resources.Load<GameObject>(DefaultModelPath);
+            if (prefab != null)
             {
-                Model = Instantiate(modelPrefab, view, false).transform;
+                Model = Instantiate(prefab, view, false).transform;
                 Model.localPosition = modelOffset;
                 foreach (Collider c in Model.GetComponentsInChildren<Collider>()) DestroyImmediate(c);   // never shoot yourself
                 Transform tip = Model.Find("Muzzle");
@@ -219,6 +226,8 @@ namespace Echo.Player
             go.transform.localPosition = localPos;
             go.transform.localScale = scale;
             var r = go.GetComponent<Renderer>();
+            if (partMaterial == null) partMaterial = Resources.Load<Material>(PartMaterialPath);
+            if (partMaterial != null) r.sharedMaterial = partMaterial;
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             var block = new MaterialPropertyBlock();
             block.SetColor(BaseColor, color);

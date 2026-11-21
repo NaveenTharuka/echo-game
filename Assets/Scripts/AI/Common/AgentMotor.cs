@@ -95,6 +95,14 @@ namespace Echo.AI
             defaultAutoBraking = nav.autoBraking;
         }
 
+        /// In a player build the agents can switch on before the NavMeshSurface has added its mesh ("Failed to create
+        /// agent because there is no valid NavMesh"). By Start the mesh is loaded: place the agent on it again.
+        void Start()
+        {
+            if (nav.enabled && !nav.isOnNavMesh && NavMesh.SamplePosition(transform.position, out var hit, 3f, NavMesh.AllAreas))
+                nav.Warp(hit.position);
+        }
+
         public float SpeedFor(Gait g) => g == Gait.Run ? (chaseSpeed > runSpeed && Urgency >= chaseUrgency ? chaseSpeed : runSpeed)
                                        : g == Gait.Walk ? walkSpeed : sneakSpeed;
 
