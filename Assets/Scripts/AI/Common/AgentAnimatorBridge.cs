@@ -28,6 +28,7 @@ namespace Echo.AI
         /// Signed yaw speed in deg/s (+ = turning right).
         public float TurnRate { get; private set; }
 
+        const float MinPlaybackCap = 1.8f;
         static readonly int Speed = Animator.StringToHash("Speed");
         static readonly int TurnF = Animator.StringToHash("Turn");
         static readonly int Listening = Animator.StringToHash("Listening");
@@ -70,6 +71,8 @@ namespace Echo.AI
 
         /// The blend tree shows the ground speed of the (damped) Speed value, capped at the fastest clip.
         /// Playback = real speed / shown speed, so feet keep up while accelerating and above the run threshold.
+        /// Cap: 1.8x, or more when the commanded speed needs it (Ambusher: run clip 3 m/s, chase 6.5 m/s -> 2.17x),
+        /// so the feet stay planted at every speed the motor can ask for.
         void FixFootSlide(float v)
         {
             float k = 1f;
@@ -77,7 +80,8 @@ namespace Echo.AI
             if (loco && v > 0.2f && has.Contains(Speed))
             {
                 float shown = Mathf.Clamp(animator.GetFloat(Speed), 0.5f, blendTopSpeed);
-                k = Mathf.Clamp(v / shown, 0.5f, 1.8f);
+                float cap = Mathf.Max(MinPlaybackCap, nav.speed / Mathf.Max(0.1f, blendTopSpeed) + 0.05f);
+                k = Mathf.Clamp(v / shown, 0.5f, cap);
             }
             animator.speed = k; scaled = true;
         }

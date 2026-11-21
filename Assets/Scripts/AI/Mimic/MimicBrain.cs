@@ -9,10 +9,13 @@ namespace Echo.AI
     /// agents (simulated with their own public reaction rule) and the player end up where it wants them.
     /// Changes from the guide: the fake is voiced (stop, face the spot, Call animation, sound when the jaw opens);
     /// it holds a listening pose while observing; Cover trails run away from where it flees, not after it.
+    /// ECHO (works alone, no hunter needed): it replays the player's own last sound 6-16 m from them - steps become a
+    /// short trail walking towards them - preferably on the far side from the nearest hunter (herding). It has sharp
+    /// ears (earSensitivity) and bolts with a fake trail the other way when the player comes within tooCloseRadius.
     public class MimicBrain : AgentBrain
     {
         enum State { Observe, Relocate, Generate, Cooldown, Flee }
-        public enum Action { None, Summon, Flush, Cover }
+        public enum Action { None, Summon, Flush, Cover, Echo }
 
         [Header("Mimic")]
         public float voiceRange = 18f, decisionInterval = 1f;
@@ -21,6 +24,15 @@ namespace Echo.AI
         public float callDelay = 0.75f, callDuration = 1.9f;
         [Tooltip("Gunshots closer than this make it flee (Cover).")]
         public float threatRadius = 12f;
+        [Tooltip("The Mimic is an ear first: hearing sensitivity set on its Hearing at start. 2 = a walking step is heard " +
+                 "~13 m away, a running one ~27 m (a Listener hears them at ~8 / 16 m).")]
+        public float earSensitivity = 2f;
+        [Tooltip("A player sound this close (m) makes it bolt with a fake run trail the other way (Cover).")]
+        public float tooCloseRadius = 7f;
+        [Tooltip("ECHO: replays the player's own last sound this far (m) from where it thinks the player is.")]
+        public Vector2 echoDistance = new(6f, 16f);
+        [Tooltip("Base utility of ECHO (works alone). Summon/Flush win when a hunter can be used; ECHO beats doing nothing (0.15).")]
+        public float echoUtility = 0.3f;
         public bool logDecisions = true;
 
         State state = State.Observe;
@@ -37,6 +49,12 @@ namespace Echo.AI
             $"plan {plannedAction} node {plannedNode} {plannedType} U={plannedUtility:0.00}  player est age {Time.time - playerEstTime:0}s";
         public Action LastAction { get; private set; }
 
+        protected override void Awake()
+        {
+            base.Awake();
+            if (Hearing != null) Hearing.sensitivity = earSensitivity;
+        }
+
         protected override void Think()
         {
             // PERCEPTION -> MEMORY: one "best guess" of the player (it cannot tell who made a sound; agents' own
@@ -46,8 +64,11 @@ namespace Echo.AI
                 if (ListenerPriority.TypeWeight(s.Type) < 0.3f) continue;
                 playerEst = s.EstimatedPosition; playerEstTime = s.TimeHeard; playerEstErr = s.PositionError;
                 playerLastType = s.Type;
-                if (s.Type == SoundType.Gunshot && Vector3.Distance(s.EstimatedPosition, transform.position) < threatRadius)
+                float near = Vector3.Distance(s.EstimatedPosition, transform.position);
+                if (s.Type == SoundType.Gunshot && near < threatRadius)
                     StartCover("gunshot close by");
+                else if (near < tooCloseRadius && state is State.Observe or State.Cooldown)
+                    StartCover($"player {near:0} m away - too close");
             }
 
             var g = NavGraph.Instance;
@@ -115,6 +136,26 @@ namespace Echo.AI
                     foreach (var k in SummonTypes)
                         Consider(Action.Summon, n, k, SummonGain(np, k) + (k == mimicry ? 0.05f : 0f), risk, travel);
 
+                // ECHO: works alone. The player's own last sound again, from somewhere else (a "second player").
+                // Herding: preferably on the far side from the nearest hunter, so stepping back from it walks the
+                // player towards that hunter.
+                if (playerAge < 8f)
+                {
+                    float d = Vector3.Distance(np, playerEst);
+                    if (d >= echoDistance.x && d <= echoDistance.y && Mathf.Abs(np.y - playerEst.y) < 2.5f)
+                    {
+                        float herd = 0f;
+                        if (NearestHunter(playerEst, out Vector3 hunter))
+                        {
+                            Vector3 toHunter = hunter - playerEst; toHunter.y = 0f;
+                            Vector3 toFake = np - playerEst; toFake.y = 0f;
+                            if (toHunter.sqrMagnitude > 0.01f && toFake.sqrMagnitude > 0.01f)
+                                herd = 0.25f * Mathf.Max(0f, -Vector3.Dot(toFake.normalized, toHunter.normalized));
+                        }
+                        Consider(Action.Echo, n, EchoType(), echoUtility + herd, risk, travel);
+                    }
+                }
+
                 // FLUSH: player silent (hiding) -> a door slam on the far side scares them towards the ambush
                 if (playerAge > 12f && ambusher != null && ambusher.HasAmbushPoint)
                 {
@@ -136,7 +177,9 @@ namespace Echo.AI
 
         void Consider(Action a, int node, SoundType type, float gain, float risk, float travel)
         {
-            float rep = (type == lastFakeType ? 0.2f : 0f) + (node == lastFakeNode && Time.time - lastFakeTime < 30f ? 0.3f : 0f);
+            // Repeating a type gives the trick away - except ECHO, whose whole point is copying what the player does.
+            float rep = (type == lastFakeType && a != Action.Echo ? 0.2f : 0f) +
+                        (node == lastFakeNode && Time.time - lastFakeTime < 30f ? 0.3f : 0f);
             float u = gain - risk - rep - 0.02f * travel;
             if (u > plannedUtility) { plannedUtility = u; plannedAction = a; plannedNode = node; plannedType = type; }
         }
@@ -162,6 +205,27 @@ namespace Echo.AI
                 gain += reacts * Mathf.Max(0f, improvement) / 20f;
             }
             return gain;
+        }
+
+        /// The sound ECHO copies: the player's own last one (a jump becomes steps, it cannot fake a gunshot - yet).
+        SoundType EchoType() => playerLastType switch
+        {
+            SoundType.Run or SoundType.Door or SoundType.MetalImpact or SoundType.ObjectDrop or SoundType.GlassBreak
+                or SoundType.Switch => playerLastType,
+            _ => SoundType.Footstep
+        };
+
+        /// Nearest other living hunter within 60 m of `p` (its real position: the Mimic knows its own kind, not the player).
+        bool NearestHunter(Vector3 p, out Vector3 at)
+        {
+            at = default; float best = 60f; bool found = false;
+            foreach (var h in AgentRegistry.All)
+            {
+                if (h == null || h == this || h is MimicBrain || !h.IsAlive) continue;
+                float d = Vector3.Distance(h.transform.position, p);
+                if (d < best) { best = d; at = h.transform.position; found = true; }
+            }
+            return found;
         }
 
         static readonly SoundType[] SummonTypes =
@@ -203,8 +267,17 @@ namespace Echo.AI
         void Emit(int node, SoundType type)
         {
             Vector3 p = NavGraph.Instance.Position(node);
-            // The fake is REAL audio: the player hears it too.
-            Noise.Make(type, p, IntensityOf(type), SoundSource.Mimic, gameObject);
+            // The fake is REAL audio: the player hears it too. Steps come as a short trail walking towards the player.
+            if (type is SoundType.Footstep or SoundType.Run)
+            {
+                // ~3.5 m of walking: towards the player while they are farther than 6 m, else away from them.
+                Vector3 dir = playerEst - p; dir.y = 0f;
+                if (dir.sqrMagnitude < 0.01f) dir = transform.forward;
+                float d = dir.magnitude;
+                dir = (d > 6f ? 1f : -1f) * dir.normalized;
+                StartCoroutine(StepTrail(p, p + dir * 3.5f, type));
+            }
+            else Noise.Make(type, p, IntensityOf(type), SoundSource.Mimic, gameObject);
             lastFakeType = type; lastFakeNode = node; lastFakeTime = Time.time;
             if (logDecisions) Debug.Log($"[Mimic] t={Time.time:0.0} fake {type} at {p}", this);
         }
@@ -220,6 +293,19 @@ namespace Echo.AI
             if (away.sqrMagnitude < 0.01f) away = -transform.forward;
             StartCoroutine(FakeTrail(transform.position, transform.position + away.normalized * 12f));
             if (logDecisions) Debug.Log($"[Mimic] t={Time.time:0.0} Cover ({why}): flees to {hide}, fake run trail the other way", this);
+        }
+
+        /// Someone walking (or running) from `from` towards `to`: 6 steps at a human cadence.
+        IEnumerator StepTrail(Vector3 from, Vector3 to, SoundType type)
+        {
+            float interval = type == SoundType.Run ? 0.33f : 0.55f;
+            for (int i = 0; i < 6; i++)
+            {
+                Vector3 p = Vector3.Lerp(from, to, i / 5f);
+                if (UnityEngine.AI.NavMesh.SamplePosition(p, out var hit, 2f, UnityEngine.AI.NavMesh.AllAreas)) p = hit.position;
+                Noise.Make(type, p, IntensityOf(type), SoundSource.Mimic, gameObject);
+                yield return new WaitForSeconds(interval);
+            }
         }
 
         IEnumerator FakeTrail(Vector3 from, Vector3 to)

@@ -16,14 +16,14 @@ namespace Echo.AI.Tracker
         float MaxThinkMs { get; }
     }
 
-    /// Tracker debug view (editor and development builds only; F2 toggles). Reads the decider, never writes.
+    /// Tracker debug view (editor and development builds only; F6 toggles; hidden at start so demos are clean, and F2 belongs to AgentDebugOverlay's time scale). Reads the decider, never writes.
     /// World: breadcrumbs with error circles (orange), suspects (magenta), velocity arrow (cyan), predicted
     /// point (red), candidate nodes coloured by score (blue = low, yellow = high), chosen node (green),
     /// cold-trail search (white = visited). Screen: state, confidence and its parts, think cost.
     /// Needs an ITrackerDebugSource on the same object (TrackerBrain or the grid sandbox's TrackerStubAgent).
     public class TrackerDebugOverlay : MonoBehaviour
     {
-        public bool show = true;
+        public bool show = false;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         ITrackerDebugSource agent;
         static Material lineMaterial;
@@ -38,7 +38,7 @@ namespace Echo.AI.Tracker
         void Update()
         {
             var kb = Keyboard.current;
-            if (kb != null && kb.f2Key.wasPressedThisFrame) show = !show;
+            if (kb != null && kb.f6Key.wasPressedThisFrame) show = !show;
         }
 
         static bool EnsureMaterial()
@@ -147,7 +147,7 @@ namespace Echo.AI.Tracker
                        $"heard: accepted {d.Accepted}  suspect {d.Suspects}  resets {d.Resets}  filtered {d.Filtered}  " +
                        $"last {d.LastResult} cred {d.LastCredibility:0.00}\n" +
                        $"think {agent.LastThinkMs:0.000} ms  avg {agent.AvgThinkMs:0.000}  max {agent.MaxThinkMs:0.000}  " +
-                       $"Dijkstra {d.Routes.Computations}" + (agent is TrackerStubAgent stub ? $"  kills {stub.Kills}" : "") + "   [F2 hide]";
+                       $"Dijkstra {d.Routes.Computations}" + (agent is TrackerStubAgent stub ? $"  kills {stub.Kills}" : "") + "   [F6 hide]";
             }
             style ??= new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 13, richText = false };
             GUI.Box(new Rect(10f, 10f, 640f, 98f), text, style);

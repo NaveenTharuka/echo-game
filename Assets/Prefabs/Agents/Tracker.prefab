@@ -1115,7 +1115,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cd24111bbbad2c9469a8d2429178901c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Echo.AI.Tracker.TrackerDebugOverlay
-  show: 1
+  show: 0
 --- !u!114 &2721824365947806516
 MonoBehaviour:
   m_ObjectHideFlags: 0
