@@ -15,6 +15,13 @@ namespace Echo.UI
         public CanvasGroup group;
         public float fadeSpeed = 10f;
 
+        [Header("Readability in the dark")]
+        [Tooltip("Prompt text size (px at the reference resolution).")]
+        public int promptFontSize = 30;
+        [Tooltip("Dark panel behind the prompt; its alpha follows the prompt's fade.")]
+        public Color backingColor = new(0f, 0f, 0f, 0.55f);
+        public Vector2 backingPadding = new(22f, 8f);
+
         [Header("Messages (HudMessage)")]
         [Tooltip("Optional. If empty, a copy of the prompt label is created above the crosshair.")]
         public Text messageLabel;
@@ -24,6 +31,8 @@ namespace Echo.UI
         string shownVerb;
         CanvasGroup messageGroup;
         float messageUntil;
+        Image backing;
+        float backingAlpha = -1f;
 
         void Awake()
         {
@@ -32,6 +41,11 @@ namespace Echo.UI
                 label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             if (label != null) label.text = string.Empty;
             if (group != null) group.alpha = 0f;
+            if (label != null)
+            {
+                label.fontSize = Mathf.Max(label.fontSize, promptFontSize);
+                backing = BuildBacking(label);
+            }
 
             if (messageLabel == null && label != null)
             {
@@ -72,7 +86,11 @@ namespace Echo.UI
                 string key = focus is IHoldToInteract h && h.RequiresHold(interactor)
                     ? "Hold " + interactor.InteractKeyHint
                     : interactor.InteractKeyHint;
-                if (label != null) label.text = $"[{key}]  {verb}";
+                if (label != null)
+                {
+                    label.text = $"[{key}]  {verb}";
+                    FitBacking();
+                }
             }
             else if (!visible) shownFocus = null;
 
@@ -81,11 +99,48 @@ namespace Echo.UI
             else if (label != null)
                 label.enabled = visible;
 
+            if (backing != null)
+            {
+                float a = group != null ? group.alpha : (visible ? 1f : 0f);
+                if (!Mathf.Approximately(a, backingAlpha))
+                {
+                    backingAlpha = a;
+                    Color c = backingColor;
+                    c.a *= a;
+                    backing.color = c;
+                    backing.enabled = a > 0.001f;
+                }
+            }
+
             bool messageVisible = Time.unscaledTime < messageUntil;
             if (messageGroup != null)
                 messageGroup.alpha = Mathf.MoveTowards(messageGroup.alpha, messageVisible ? 1f : 0f, fadeSpeed * Time.unscaledDeltaTime);
             else if (messageLabel != null)
                 messageLabel.enabled = messageVisible;
+        }
+
+        /// A dark panel drawn just behind the prompt label (sibling before it), same anchor and position.
+        static Image BuildBacking(Text text)
+        {
+            var go = new GameObject("PromptBacking", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            var rt = (RectTransform)go.transform;
+            var lrt = (RectTransform)text.transform;
+            rt.SetParent(lrt.parent, false);
+            rt.SetSiblingIndex(lrt.GetSiblingIndex());
+            rt.anchorMin = lrt.anchorMin; rt.anchorMax = lrt.anchorMax; rt.pivot = lrt.pivot;
+            rt.anchoredPosition = lrt.anchoredPosition;
+            var img = go.GetComponent<Image>();
+            img.raycastTarget = false;
+            img.enabled = false;
+            return img;
+        }
+
+        /// Sizes the panel to the text (only when the text changes).
+        void FitBacking()
+        {
+            if (backing == null) return;
+            var rt = (RectTransform)backing.transform;
+            rt.sizeDelta = new Vector2(label.preferredWidth + backingPadding.x * 2f, label.preferredHeight + backingPadding.y * 2f);
         }
 
         /// What the prompt currently reads; empty when hidden. Used by the sandbox self-test.
