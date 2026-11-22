@@ -11,7 +11,10 @@ namespace Echo.AI
     /// damageable takes attackDamage.
     public class AgentBody : MonoBehaviour, IDamageable
     {
-        public float maxHealth = 100f;
+        [Tooltip("Shotgun does 25 per hit: 400 = 16 hits. Per agent in AgentAssetBuilder (Listener/Tracker 400, Ambusher 500, Mimic 300).")]
+        public float maxHealth = 400f;
+        [Tooltip("Min seconds between hit-react flinches (and hurt cries), so rapid fire cannot stun-lock it.")]
+        public float flinchCooldown = 1f;
         public float attackDamage = 35f, attackCooldown = 1.6f, windup = 0.5f, reach = 1.1f, hitRadius = 0.9f;
         [Tooltip("Lunge: during the wind-up the body springs at the target if it is within this range (m) ...")]
         public float lungeRange = 3.4f;
@@ -26,7 +29,7 @@ namespace Echo.AI
         /// True from the start of the wind-up until the swing has landed.
         public bool IsAttacking { get; private set; }
 
-        AgentBrain brain; AgentMotor motor; AgentAnimatorBridge anim; AgentVoice voice; Collider body; float nextAttack;
+        AgentBrain brain; AgentMotor motor; AgentAnimatorBridge anim; AgentVoice voice; Collider body; float nextAttack, nextFlinch;
 
         void Awake()
         {
@@ -96,8 +99,14 @@ namespace Echo.AI
                 if (body) body.enabled = false;
                 return;
             }
-            if (anim != null) anim.Hit();
-            if (voice != null) voice.Hurt();
+            // Flinch at most once per flinchCooldown: with a lot of health, rapid fire would otherwise keep restarting
+            // the hit-react clip and its cry (a stun-lock). The brain still hears every hit.
+            if (Time.time >= nextFlinch)
+            {
+                nextFlinch = Time.time + flinchCooldown;
+                if (anim != null) anim.Hit();
+                if (voice != null) voice.Hurt();
+            }
             brain.OnHurt(from);
         }
 

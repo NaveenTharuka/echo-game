@@ -794,7 +794,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2d386c37e7028ea4bb1ac5d721acaf4a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Echo.AI.AgentBody
-  maxHealth: 100
+  maxHealth: 500
   attackDamage: 50
   attackCooldown: 1.6
   windup: 0.5

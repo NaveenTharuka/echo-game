@@ -25,7 +25,7 @@ namespace Echo.Player
         public float range = 100f;
         [Tooltip("s between shots.")]
         public float fireInterval = 0.3f;
-        [Tooltip("Damage per hit to an IDamageable (agents: 100 HP -> 4 hits).")]
+        [Tooltip("Damage per hit to an IDamageable (agents: 300-500 HP -> 12-20 hits).")]
         public float damage = 25f;
         [Tooltip("N·s impulse on a dynamic Rigidbody that is hit (free 2 kg body -> 3 m/s).")]
         public float impactImpulse = 6f;
