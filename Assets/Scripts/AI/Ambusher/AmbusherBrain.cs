@@ -25,6 +25,9 @@ namespace Echo.AI
         public float strikeDistance = 5f;
         [Tooltip("Reflex strike in any state for a precise sound this close (m).")]
         public float closeStrike = 3f;
+        [Tooltip("Shot: roars and backs off at most once per this many seconds (s).")]
+        public float shotReactionCooldown = 5f;
+        float nextShotReaction;
         public float waitTimeout = 25f, minConfidence = 0.35f, minScore = 0.2f, playerSpeedGuess = 2.5f;
         [Tooltip("Blocked on the way to the ambush point but this close (m): wait here instead of giving the ambush up.")]
         public float closeEnoughToWait = 4f;
@@ -287,7 +290,11 @@ namespace Echo.AI
         public override void OnHurt(Vector3 from)
         {
             // Shot: it knows roughly where from, roars and backs off to re-plan instead of charging a gun.
+            // Once per shotReactionCooldown: with 500 HP, backing off on every hit would let the player keep it
+            // away just by firing. Hits in between only update where the shooter is.
             playerEst = from; playerEstTime = Time.time;
+            if (Time.time < nextShotReaction) return;
+            nextShotReaction = Time.time + shotReactionCooldown;
             if (Anim) Anim.Alert();
             if (TryGetComponent(out AgentVoice voice)) voice.Scream(true);   // the roar
             Relocate(AgentMotor.Gait.Run, "shot: backing off");

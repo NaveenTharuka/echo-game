@@ -11,10 +11,14 @@ namespace Echo.AI
     /// it holds a listening pose while observing; Cover trails run away from where it flees, not after it.
     /// ECHO (works alone, no hunter needed): it replays the player's own last sound 6-16 m from them - steps become a
     /// short trail walking towards them - preferably on the far side from the nearest hunter (herding). It has sharp
-    /// ears (earSensitivity) and bolts with a fake trail the other way when the player comes within tooCloseRadius.
+    /// ears (earSensitivity).
+    /// STALK (the lure pays off): its fakes pull the player in, so a player heard within engageRadius is prey, not a
+    /// threat. It closes in quietly (walk), pounces at chase speed when close or when the prey runs, strikes a precise
+    /// sound within strikeDistance, and freezes and listens where it lost them. Shooting it makes it charge the shot.
+    /// It only falls back (Cover: hide + fake run trail the other way) when badly wounded (retreatHealth).
     public class MimicBrain : AgentBrain
     {
-        enum State { Observe, Relocate, Generate, Cooldown, Flee }
+        enum State { Observe, Relocate, Generate, Cooldown, Stalk, Flee }
         public enum Action { None, Summon, Flush, Cover, Echo }
 
         [Header("Mimic")]
@@ -22,13 +26,23 @@ namespace Echo.AI
         public Vector2 cooldownRange = new(10f, 15f);
         [Tooltip("Seconds into the Call animation when the fake sound goes off (jaw fully open).")]
         public float callDelay = 0.75f, callDuration = 1.9f;
-        [Tooltip("Gunshots closer than this make it flee (Cover).")]
-        public float threatRadius = 12f;
         [Tooltip("The Mimic is an ear first: hearing sensitivity set on its Hearing at start. 2 = a walking step is heard " +
                  "~13 m away, a running one ~27 m (a Listener hears them at ~8 / 16 m).")]
         public float earSensitivity = 2f;
-        [Tooltip("A player sound this close (m) makes it bolt with a fake run trail the other way (Cover).")]
-        public float tooCloseRadius = 7f;
+
+        [Header("Stalk (the lure pays off)")]
+        [Tooltip("A player sound estimated this close (m, same floor) turns the Mimic from trickster into hunter.")]
+        public float engageRadius = 12f;
+        [Tooltip("Already stalking: keeps following sounds up to this far (m).")]
+        public float pursuitRadius = 24f;
+        [Tooltip("Closer than this (m) it pounces at chase speed; farther it closes in at a walk.")]
+        public float pounceRange = 6f;
+        [Tooltip("Reflex strike for a sound this close (m) localised better than strikePrecision (m).")]
+        public float strikeDistance = 3f, strikePrecision = 2f;
+        [Tooltip("Prey silent this long (s): it stops listening for them and goes back to luring.")]
+        public float stalkPatience = 10f;
+        [Tooltip("Hurt below this share of its health it stops fighting and falls back (Cover).")]
+        [Range(0f, 1f)] public float retreatHealth = 0.35f;
         [Tooltip("ECHO: replays the player's own last sound this far (m) from where it thinks the player is.")]
         public Vector2 echoDistance = new(6f, 16f);
         [Tooltip("Base utility of ECHO (works alone). Summon/Flush win when a hunter can be used; ECHO beats doing nothing (0.15).")]
@@ -44,7 +58,13 @@ namespace Echo.AI
 
         public override string DisplayName => "MIMIC";
         public override string StateName => state.ToString();
-        public override float AlertLevel => state == State.Flee ? 0.6f : state == State.Generate ? 0.4f : 0.1f;
+        public override float AlertLevel => state switch
+        {
+            State.Stalk => 0.85f,          // hunting: sharper ears and chase speed (AgentBrain feeds Hearing + Motor)
+            State.Flee => 0.6f,
+            State.Generate => 0.4f,
+            _ => 0.1f
+        };
         public override string DebugText =>
             $"plan {plannedAction} node {plannedNode} {plannedType} U={plannedUtility:0.00}  player est age {Time.time - playerEstTime:0}s";
         public Action LastAction { get; private set; }
@@ -64,11 +84,14 @@ namespace Echo.AI
                 if (ListenerPriority.TypeWeight(s.Type) < 0.3f) continue;
                 playerEst = s.EstimatedPosition; playerEstTime = s.TimeHeard; playerEstErr = s.PositionError;
                 playerLastType = s.Type;
-                float near = Vector3.Distance(s.EstimatedPosition, transform.position);
-                if (s.Type == SoundType.Gunshot && near < threatRadius)
-                    StartCover("gunshot close by");
-                else if (near < tooCloseRadius && state is State.Observe or State.Cooldown)
-                    StartCover($"player {near:0} m away - too close");
+                if (state == State.Flee || Body.IsAttacking) continue;
+
+                Vector3 rel = s.EstimatedPosition - transform.position;
+                bool sameFloor = Mathf.Abs(rel.y) < 2.5f; rel.y = 0f;
+                float near = rel.magnitude;
+                if (!sameFloor) continue;
+                if (near <= strikeDistance && s.PositionError < strikePrecision) Strike(s.EstimatedPosition);
+                else if (near < (state == State.Stalk ? pursuitRadius : engageRadius)) Engage(s.Type, near);
             }
 
             var g = NavGraph.Instance;
@@ -94,13 +117,32 @@ namespace Echo.AI
                     if (!emitted && stateTime >= callDelay) { Emit(plannedNode, plannedType); emitted = true; }
                     if (stateTime >= callDuration)
                     {
+                        // The call was bait: it stays put, silent, facing where the prey was, and waits for whoever
+                        // comes to the noise (Stalk takes over when they do).
                         cooldownUntil = Time.time + Random.Range(cooldownRange.x, cooldownRange.y);
                         Enter(State.Cooldown);
-                        Motor.MoveTo(HidingSpotAwayFrom(playerEst), AgentMotor.Gait.Sneak);
                     }
                     break;
                 case State.Cooldown:
+                    Motor.LookAt(playerEst);
                     if (Time.time >= cooldownUntil) Enter(State.Observe);
+                    break;
+                case State.Stalk:
+                    if (Body.IsAttacking) break;
+                    if (Time.time - playerEstTime > stalkPatience)
+                    {
+                        if (logDecisions) Debug.Log($"[Mimic] t={Time.time:0.0} Stalk: prey silent {stalkPatience:0} s - back to luring", this);
+                        nextDecision = Time.time;   // the next lure right away: it still knows roughly where they are
+                        Enter(State.Observe);
+                        break;
+                    }
+                    if (Arrived || Failed)
+                    {
+                        // Lost them at the last sound: freeze and listen. Any step brings it back on them.
+                        Motor.Stop();
+                        if (Anim) Anim.SetListening(true);
+                    }
+                    if (!Motor.IsMoving) Motor.LookAt(playerEst);
                     break;
                 case State.Flee:
                     if (Arrived || Failed || stateTime > 8f)
@@ -282,6 +324,28 @@ namespace Echo.AI
             if (logDecisions) Debug.Log($"[Mimic] t={Time.time:0.0} fake {type} at {p}", this);
         }
 
+        /// Prey heard close by: close in. Walking is quiet enough to keep the lure going; a running (fleeing) prey, a
+        /// gunshot or prey within pounceRange gets the full chase speed (AlertLevel 0.85 >= the motor's chase urgency).
+        void Engage(SoundType type, float near)
+        {
+            bool pounce = near <= pounceRange || type is SoundType.Run or SoundType.Gunshot or SoundType.Land or SoundType.Jump;
+            if (state != State.Stalk)
+            {
+                if (logDecisions)
+                    Debug.Log($"[Mimic] t={Time.time:0.0} {state}->Stalk: {type} {near:0.0} m away - the lure worked, closing in", this);
+                Enter(State.Stalk);
+            }
+            if (Anim) Anim.SetListening(false);
+            Motor.MoveTo(playerEst, pounce ? AgentMotor.Gait.Run : AgentMotor.Gait.Walk);
+        }
+
+        void Strike(Vector3 where)
+        {
+            if (state != State.Stalk) Enter(State.Stalk);
+            if (logDecisions) Debug.Log($"[Mimic] t={Time.time:0.0} strike at {where}", this);
+            Body.TryAttack(where);
+        }
+
         void StartCover(string why)
         {
             if (state == State.Flee || NavGraph.Instance == null || NavGraph.Instance.Count == 0) return;
@@ -332,23 +396,22 @@ namespace Echo.AI
             return g.Position(best);
         }
 
+        /// Shot: while it is healthy it charges the shooter (the shot gave away exactly where they stand); badly
+        /// wounded it falls back to a hiding spot and fakes a run trail the other way, then lures again.
         public override void OnHurt(Vector3 from)
         {
-            playerEst = from; playerEstTime = Time.time; playerEstErr = 1f;
-            StartCover("got hurt");
+            playerEst = from; playerEstTime = Time.time; playerEstErr = 1f; playerLastType = SoundType.Gunshot;
+            if (Body.Health <= retreatHealth * Body.maxHealth) { StartCover($"badly hurt ({Body.Health:0} hp)"); return; }
+            if (state == State.Flee) return;
+            Vector3 rel = from - transform.position; rel.y = 0f;
+            Engage(SoundType.Gunshot, rel.magnitude);
         }
 
-        /// Cornered: swipe, then bolt once the swing is done (fleeing during the windup would drag the claws away).
+        /// Touched: strike, and stay on the prey.
         public override void OnContact(Vector3 where)
         {
-            Body.TryAttack(where);
-            StartCoroutine(FleeAfter(Body.windup + 0.4f));
-        }
-
-        IEnumerator FleeAfter(float seconds)
-        {
-            yield return new WaitForSeconds(seconds);
-            if (IsAlive) StartCover("touched");
+            playerEst = where; playerEstTime = Time.time; playerEstErr = 0.5f;
+            Strike(where);
         }
 
         public override void ResetAgent()

@@ -36,6 +36,8 @@ namespace Echo.EditorTools
             public float ChaseSpeed = 6.2f;
             public int AvoidancePriority = 50;
             public float AttackDamage = 35f;
+            /// AgentBody.maxHealth. The shotgun does 25 per hit, so 400 = 16 hits (~5 s of perfect fire).
+            public float MaxHealth = 400f;
             /// Clip name suffix in the FBX -> clean name.  Locomotion: Idle, Sneak, Walk, Run.
             public string Idle = "Idle", Sneak = "Crawl", Walk = "Walk", Run = "Run";
             public string Listen = "Twitch", Alert = "Scream", Attack = "Attack", Hit = "HitReact", Death = "Death";
@@ -83,6 +85,7 @@ namespace Echo.EditorTools
             HearingSensitivity = 1.15f, RunSpeed = 6f, ChaseSpeed = 6.8f,   // the fast one
             AvoidancePriority = 40,
             AttackDamage = 35f,
+            MaxHealth = 400f,
             BreathingLoopPath = "Assets/Audio/Agents/Listener/Listener_Breathing_Loop.wav",
             BreathingMaxDistance = 12f,
             StepClipsFolder = "Assets/Audio/Agents/Listener",
@@ -118,6 +121,7 @@ namespace Echo.EditorTools
             HearingSensitivity = 1.0f, RunSpeed = 5.5f, ChaseSpeed = 6.2f,   // wins by prediction, not speed
             AvoidancePriority = 45,
             AttackDamage = 35f,
+            MaxHealth = 400f,
             // Demon_animated.fbx: exported ~5.95 m tall -> 2.4 m. The Ball mesh is a throw prop: hidden.
             ModelScale = 0.4f,
             HiddenMeshes = new[] { "Ball-mesh" },
@@ -157,6 +161,7 @@ namespace Echo.EditorTools
             HearingSensitivity = 1.4f, RunSpeed = 5.5f, ChaseSpeed = 6.5f,     // best ears; short explosive lunges (guide §12.1). Run clip 3 m/s: the bridge plays it up to 2.2x at chase speed
             AvoidancePriority = 55,
             AttackDamage = 50f,
+            MaxHealth = 500f,
             ModelScale = 0.8f,             // 3.0 m brute -> 2.4 m
             Idle = "idol_breathing", Sneak = "walking", Walk = "walking", Run = "running",
             Listen = "searching", Alert = "scream", Attack = "attack", Hit = "hit", Death = "deth",
@@ -189,6 +194,7 @@ namespace Echo.EditorTools
             HearingSensitivity = 0.9f, RunSpeed = 5.5f, ChaseSpeed = 6.0f,     // guide §11.2; it flees, it does not chase
             AvoidancePriority = 60,
             AttackDamage = 35f,
+            MaxHealth = 300f,
             // Old ECHO_Creature body (Models/4, baked in ECHO_stage8_textured.blend), metres -> 1.96 m at scale 1.
             // Phase 2: x1.3 -> 2.55 m (was the smallest agent; stays just under the Listener's 2.72 m).
             ModelScale = 1.3f, BodyScale = 1.3f,
@@ -463,6 +469,7 @@ namespace Echo.EditorTools
                 motor.runSpeed = spec.RunSpeed; motor.chaseSpeed = spec.ChaseSpeed;
                 var body = root.AddComponent<AgentBody>();
                 body.attackDamage = spec.AttackDamage;
+                body.maxHealth = spec.MaxHealth;
                 body.reach = 1.1f * spec.BodyScale; body.hitRadius = 0.9f * spec.BodyScale;
                 // Everything: a mask like ~Agents is saved with only *named* layers, which would drop the player's
                 // unnamed layer 8. The body skips its own colliders anyway.
